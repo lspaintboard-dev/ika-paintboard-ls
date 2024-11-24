@@ -10,19 +10,24 @@ declare global {
 }
 const logger = pino({
 	transport: {
-		target: 'pino-pretty'
+		target: 'pino-pretty',
+		options: {
+			ignore: 'pid,hostname'
+		}
 	}
 })
 globalThis.logger = logger
 
-const configSchema = z.object({
+const configSchema = z.strictObject({
 	logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']),
-	validationPaste: z.string().default('IkaPaintBoard'),
 	port: z.number(),
 	paintDelay: z.number().min(0),
+	debounceDelay: z.number().min(0).default(0),
+	useDB: z.boolean().default(false),
 	width: z.number().min(1).default(1600),
 	height: z.number().min(1).default(900),
-	useDB: z.boolean().default(false) // NEED IMPL
+	clearBoard: z.boolean().default(false),
+	validationPaste: z.string().default('IkaPaintBoard')
 })
 
 let config: z.infer<typeof configSchema>
@@ -36,23 +41,7 @@ try {
 	process.exit(1)
 }
 
-const paintboard = new PaintBoardManager(
-	config.width,
-	config.height,
-	config.paintDelay,
-	config.validationPaste,
-	config.useDB
-)
-
-// 优雅退出处理
-function handleShutdown() {
-	logger.info('Server shutting down...')
-	paintboard.shutdown()
-	process.exit(0)
-}
-
-process.on('SIGINT', handleShutdown)
-process.on('SIGTERM', handleShutdown)
+logger.level = config.logLevel
 
 const server = Bun.serve<WebSocketData>({
 	static: {
@@ -129,22 +118,14 @@ const server = Bun.serve<WebSocketData>({
 				].join('-')
 				const id = msg[27] + msg[28] * 256
 
-				const result = paintboard.validateToken(token, uid)
+				let result = paintboard.validateToken(token, uid)
 				if (result === PaintResultCode.SUCCESS) {
-					paintboard.setPixel(x, y, color)
+					const success = paintboard.setPixel(x, y, color)
 
-					const setColorMsg = new Uint8Array([
-						0xfa,
-						x & 255,
-						x >> 8,
-						y & 255,
-						y >> 8,
-						color.r,
-						color.g,
-						color.b
-					])
-
-					ws.publish('paint', setColorMsg) // S2C set_color
+					// 移除直接发送逻辑,现在由 PaintBoardManager 处理
+					if (!success) {
+						result = PaintResultCode.BAD_FORMAT
+					}
 				}
 
 				const response = new Uint8Array([0xff, id & 255, id >> 8, result])
@@ -155,6 +136,41 @@ const server = Bun.serve<WebSocketData>({
 
 	port: config.port
 })
+
+const paintboard = new PaintBoardManager(
+	config.width,
+	config.height,
+	config.paintDelay,
+	config.validationPaste,
+	config.useDB,
+	config.clearBoard,
+	config.debounceDelay
+)
+
+// 注册颜色更新事件处理
+paintboard.onColorUpdate((x, y, color) => {
+	const setColorMsg = new Uint8Array([
+		0xfa,
+		x & 255,
+		x >> 8,
+		y & 255,
+		y >> 8,
+		color.r,
+		color.g,
+		color.b
+	])
+	server.publish('paint', setColorMsg)
+})
+
+// 优雅退出处理
+function handleShutdown() {
+	logger.info('Server shutting down...')
+	paintboard.shutdown()
+	process.exit(0)
+}
+
+process.on('SIGINT', handleShutdown)
+process.on('SIGTERM', handleShutdown)
 
 async function handleTokenRequest(req: Request): Promise<Response> {
 	try {

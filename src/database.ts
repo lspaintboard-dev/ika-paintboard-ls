@@ -36,6 +36,41 @@ export class DBManager {
 		this.loadTokensStmt = this.db.prepare(
 			'SELECT token, uid, last_paint FROM tokens'
 		)
+
+		// 改为异步初始化
+		this.init()
+	}
+
+	private async init() {
+		await this.migrateOldTokens()
+	}
+
+	private async migrateOldTokens() {
+		try {
+			const oldDbPath = './liucang.db'
+			if (!(await Bun.file(oldDbPath).exists())) {
+				return
+			}
+
+			const oldDb = new Database(oldDbPath, { readonly: true })
+			const tokens = oldDb.query('SELECT uid, token FROM tokens').all() as {
+				uid: number
+				token: string
+			}[]
+
+			this.db.transaction(() => {
+				for (const { uid, token } of tokens) {
+					this.saveTokenStmt.run(token, uid, 0) // lastPaint 设为 0
+				}
+			})()
+
+			oldDb.close()
+			console.info(
+				`Successfully migrated ${tokens.length} tokens from old database`
+			)
+		} catch (error) {
+			console.error(error, 'Error migrating tokens from old database')
+		}
 	}
 
 	public saveBoard(pixels: Color[][], width: number, height: number) {

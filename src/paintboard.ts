@@ -2,7 +2,8 @@ import {
 	type PaintBoard,
 	type Color,
 	type Token,
-	PaintResultCode
+	PaintResultCode,
+	type ColorUpdateListener
 } from './types'
 import { randomUUID } from 'crypto'
 import { DBManager } from './database'
@@ -19,24 +20,42 @@ export class PaintBoardManager {
 	private db?: DBManager
 	private autoSaveInterval?: Timer
 	private lastPaintTime: Map<string, number> = new Map()
+	private pendingPixels: Array<Array<{ color: Color; timeout: Timer } | null>> =
+		[]
+	private debounceDelay: number
+	private colorUpdateListener?: ColorUpdateListener
 
 	constructor(
 		width: number,
 		height: number,
 		paintDelay: number,
 		validationPaste: string,
-		useDB: boolean = false
+		useDB: boolean,
+		clearBoard: boolean,
+		debounceDelay: number
 	) {
 		if (useDB) {
 			this.db = new DBManager()
-			const saved = this.db.loadBoard()
-			if (saved) {
-				this.board = saved
-				this.tokens = this.db.loadTokens()
+
+			// 总是加载 Token
+			this.tokens = this.db.loadTokens()
+			logger.info('Loaded tokens from database')
+
+			// 只在不清空绘版时加载绘版数据
+			if (!clearBoard) {
+				const saved = this.db.loadBoard()
+				if (saved) {
+					this.board = saved
+					logger.info('Loaded board state from database')
+				} else {
+					this.initializeBoard(width, height)
+					logger.info('Initialized new board (no data in database)')
+				}
 			} else {
 				this.initializeBoard(width, height)
+				logger.info('Cleared board as requested')
 			}
-			// 设置自动保存间隔(5分钟)
+
 			this.autoSaveInterval = setInterval(() => this.saveToDb(), 5 * 60 * 1000)
 		} else {
 			this.initializeBoard(width, height)
@@ -44,6 +63,12 @@ export class PaintBoardManager {
 
 		this.paintDelay = paintDelay
 		this.validationPaste = validationPaste
+		this.debounceDelay = debounceDelay
+
+		// 初始化待处理像素数组
+		this.pendingPixels = Array(height)
+			.fill(null)
+			.map(() => Array(width).fill(null))
 	}
 
 	private initializeBoard(width: number, height: number) {
@@ -74,11 +99,35 @@ export class PaintBoardManager {
 		return Buffer.from(buffer)
 	}
 
+	public onColorUpdate(listener: ColorUpdateListener) {
+		this.colorUpdateListener = listener
+	}
+
 	public setPixel(x: number, y: number, color: Color): boolean {
 		if (x < 0 || x >= this.board.width || y < 0 || y >= this.board.height) {
 			return false
 		}
+
+		if (this.debounceDelay > 0) {
+			const existing = this.pendingPixels[y][x]
+			if (existing) {
+				// 直接更新颜色值,不重置定时器
+				existing.color = color
+				return true
+			}
+
+			const timeout = setTimeout(() => {
+				this.board.pixels[y][x] = color
+				this.colorUpdateListener?.(x, y, color)
+				this.pendingPixels[y][x] = null
+			}, this.debounceDelay)
+
+			this.pendingPixels[y][x] = { color, timeout }
+			return true
+		}
+
 		this.board.pixels[y][x] = color
+		this.colorUpdateListener?.(x, y, color)
 		return true
 	}
 
@@ -114,6 +163,15 @@ export class PaintBoardManager {
 		if (this.db) {
 			this.saveToDb()
 			this.db.close()
+		}
+		// 清理所有待处理的防抖计时器
+		for (let y = 0; y < this.board.height; y++) {
+			for (let x = 0; x < this.board.width; x++) {
+				const pending = this.pendingPixels[y][x]
+				if (pending) {
+					clearTimeout(pending.timeout)
+				}
+			}
 		}
 	}
 

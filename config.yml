@@ -1,5 +1,7 @@
-logLevel: debug
-port: 32767
-paintDelay: 1
-validationPaste: 'LSPaintBoard-2025'
-useDB: true
+logLevel: info # 日志级别
+port: 32767 # 监听端口
+paintDelay: 1 # 画图延迟
+validationPaste: 'LSPaintBoard-2025' # 云剪切板验证码
+useDB: true # 是否使用数据库
+clearBoard: true # 是否在启动时清空画板
+debounceDelay: 0 # 防抖延迟

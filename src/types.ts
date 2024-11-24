@@ -36,3 +36,9 @@ export type WebSocketData = {
 	uid?: number
 	token?: string
 }
+
+export interface WebSocketServer {
+	publish(topic: string, data: Uint8Array): void
+}
+
+export type ColorUpdateListener = (x: number, y: number, color: Color) => void
