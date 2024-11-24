@@ -3,6 +3,7 @@ import { parse as parseYaml } from 'yaml'
 import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
 import { type TokenRequest, PaintResultCode, type WebSocketData } from './types'
+import { compress } from 'zstd.ts'
 
 // 添加 logger 到全局作用域
 declare global {
@@ -62,7 +63,7 @@ const server = Bun.serve<WebSocketData>({
 			}
 		)
 	},
-	fetch(req: Request, server) {
+	fetch: async (req: Request, server) => {
 		// 处理 CORS 预检请求
 		if (req.method === 'OPTIONS') {
 			return new Response(null, {
@@ -96,10 +97,14 @@ const server = Bun.serve<WebSocketData>({
 
 		// HTTP API 处理
 		if (url.pathname === '/api/paintboard/getboard') {
-			return new Response(paintboard.getBoardBuffer(), {
+			const compressed = await compress({
+				input: paintboard.getBoardBuffer()
+			})
+			return new Response(compressed, {
 				headers: {
 					'Content-Type': 'application/octet-stream',
-					'Access-Control-Allow-Origin': '*'
+					'Access-Control-Allow-Origin': '*',
+					'Content-Encoding': 'zstd'
 				}
 			})
 		}
