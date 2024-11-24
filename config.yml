@@ -1,0 +1,5 @@
+logLevel: debug
+port: 32767
+paintDelay: 1
+validationPaste: 'LSPaintBoard-2025'
+useDB: true
