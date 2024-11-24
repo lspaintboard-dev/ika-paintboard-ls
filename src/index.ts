@@ -27,7 +27,9 @@ const configSchema = z.strictObject({
 	width: z.number().min(1).default(1600),
 	height: z.number().min(1).default(900),
 	clearBoard: z.boolean().default(false),
-	validationPaste: z.string().default('IkaPaintBoard')
+	validationPaste: z.string().default('IkaPaintBoard'),
+	key: z.string().optional(),
+	cert: z.string().optional()
 })
 
 let config: z.infer<typeof configSchema>
@@ -134,7 +136,15 @@ const server = Bun.serve<WebSocketData>({
 		}
 	},
 
-	port: config.port
+	port: config.port,
+	...(config.key && config.cert
+		? {
+				tls: {
+					key: Bun.file(config.key),
+					cert: Bun.file(config.cert)
+				}
+		  }
+		: {})
 })
 
 const paintboard = new PaintBoardManager(
