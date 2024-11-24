@@ -47,17 +47,33 @@ logger.level = config.logLevel
 
 const server = Bun.serve<WebSocketData>({
 	static: {
-		'/api': new Response('IkaPaintBoard Made by Ikaleio :)'),
+		'/api': new Response('IkaPaintBoard Made by Ikaleio :)', {
+			headers: {
+				'Access-Control-Allow-Origin': '*'
+			}
+		}),
 		'/dev/frontend': new Response(
 			await Bun.file('./static/index.html').bytes(),
 			{
 				headers: {
-					'Content-Type': 'text/html'
+					'Content-Type': 'text/html',
+					'Access-Control-Allow-Origin': '*'
 				}
 			}
 		)
 	},
 	fetch(req: Request, server) {
+		// 处理 CORS 预检请求
+		if (req.method === 'OPTIONS') {
+			return new Response(null, {
+				headers: {
+					'Access-Control-Allow-Origin': '*',
+					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+					'Access-Control-Allow-Headers': 'Content-Type'
+				}
+			})
+		}
+
 		const url = new URL(req.url)
 
 		// WebSocket 升级请求处理
@@ -70,13 +86,21 @@ const server = Bun.serve<WebSocketData>({
 				})
 			)
 				return
-			return new Response('Upgrade failed', { status: 500 })
+			return new Response('Upgrade failed', {
+				status: 500,
+				headers: {
+					'Access-Control-Allow-Origin': '*'
+				}
+			})
 		}
 
 		// HTTP API 处理
 		if (url.pathname === '/api/paintboard/getboard') {
 			return new Response(paintboard.getBoardBuffer(), {
-				headers: { 'Content-Type': 'application/octet-stream' }
+				headers: {
+					'Content-Type': 'application/octet-stream',
+					'Access-Control-Allow-Origin': '*'
+				}
 			})
 		}
 
@@ -84,7 +108,12 @@ const server = Bun.serve<WebSocketData>({
 			return handleTokenRequest(req)
 		}
 
-		return new Response('Not Found', { status: 404 })
+		return new Response('Not Found', {
+			status: 404,
+			headers: {
+				'Access-Control-Allow-Origin': '*'
+			}
+		})
 	},
 
 	websocket: {
@@ -196,7 +225,10 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 				}),
 				{
 					status: 403,
-					headers: { 'Content-Type': 'application/json' }
+					headers: {
+						'Content-Type': 'application/json',
+						'Access-Control-Allow-Origin': '*'
+					}
 				}
 			)
 		}
@@ -209,7 +241,10 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 			}),
 			{
 				status: 200,
-				headers: { 'Content-Type': 'application/json' }
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*'
+				}
 			}
 		)
 	} catch (e) {
@@ -223,7 +258,10 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 			}),
 			{
 				status: 400,
-				headers: { 'Content-Type': 'application/json' }
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*'
+				}
 			}
 		)
 	}
