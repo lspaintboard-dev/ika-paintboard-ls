@@ -232,17 +232,40 @@ process.on('SIGTERM', handleShutdown)
 async function handleTokenRequest(req: Request): Promise<Response> {
 	try {
 		const body = (await req.json()) as TokenRequest
-		const token = await paintboard.generateToken(body.uid, body.paste)
-		if (!token) {
+		const result = await paintboard.generateToken(body.uid, body.paste)
+
+		if (!result.token) {
+			if (
+				result.error === 'PASTE_NOT_FOUND' ||
+				result.error === 'UID_MISMATCH' ||
+				result.error === 'CONTENT_MISMATCH'
+			) {
+				return new Response(
+					JSON.stringify({
+						statusCode: 403,
+						data: {
+							errorType: result.error
+						}
+					}),
+					{
+						status: 403,
+						headers: {
+							'Content-Type': 'application/json',
+							'Access-Control-Allow-Origin': '*'
+						}
+					}
+				)
+			}
+
 			return new Response(
 				JSON.stringify({
-					statusCode: 403,
+					statusCode: 500,
 					data: {
-						errorType: 'PASTE_VALIDATION_FAILED'
+						errorType: 'SERVER_ERROR'
 					}
 				}),
 				{
-					status: 403,
+					status: 500,
 					headers: {
 						'Content-Type': 'application/json',
 						'Access-Control-Allow-Origin': '*'
@@ -250,11 +273,12 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 				}
 			)
 		}
+
 		return new Response(
 			JSON.stringify({
 				statusCode: 200,
 				data: {
-					token
+					token: result.token
 				}
 			}),
 			{

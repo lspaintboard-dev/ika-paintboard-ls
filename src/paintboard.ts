@@ -134,8 +134,9 @@ export class PaintBoardManager {
 	public async generateToken(
 		uid: number,
 		paste: string
-	): Promise<string | null> {
-		if (await this.validatePaste(uid, paste)) {
+	): Promise<{ token: string | null; error?: string }> {
+		const validation = await this.validatePaste(uid, paste)
+		if (validation.success) {
 			const token = randomUUID()
 			const tokenInfo = {
 				uid,
@@ -144,9 +145,9 @@ export class PaintBoardManager {
 			}
 			this.tokens.set(token, tokenInfo)
 			this.db?.saveToken(tokenInfo)
-			return token
+			return { token }
 		}
-		return null
+		return { token: null, error: validation.error }
 	}
 
 	private saveToDb() {
@@ -189,21 +190,35 @@ export class PaintBoardManager {
 		return result
 	}
 
-	private async validatePaste(uid: number, paste: string): Promise<boolean> {
-		uid = parseInt(uid.toString()) // 我他妈真是大开眼界了
-		const resp = await fetch(
-			`https://www.luogu.com/paste/${paste}?_contentOnly=1`
-		)
-		if (resp.status !== 200) return false
+	private async validatePaste(
+		uid: number,
+		paste: string
+	): Promise<{ success: boolean; error?: string }> {
+		uid = parseInt(uid.toString())
 		try {
+			const resp = await fetch(
+				`https://www.luogu.com/paste/${paste}?_contentOnly=1`
+			)
+			if (resp.status === 404) {
+				return { success: false, error: 'PASTE_NOT_FOUND' }
+			}
+			if (resp.status !== 200) {
+				return { success: false }
+			}
 			const data = await resp.json()
-			if (data.code !== 200) return false
-			if (parseInt(data.currentData?.paste?.user?.uid) !== uid) return false
-			if (data.currentData?.paste?.data !== this.validationPaste) return false
+			if (data.code !== 200) {
+				return { success: false }
+			}
+			if (parseInt(data.currentData?.paste?.user?.uid) !== uid) {
+				return { success: false, error: 'UID_MISMATCH' }
+			}
+			if (data.currentData?.paste?.data !== this.validationPaste) {
+				return { success: false, error: 'CONTENT_MISMATCH' }
+			}
+			return { success: true }
 		} catch (e) {
 			logger.error(e, 'Failed to parse paste response')
-			return false
+			return { success: false }
 		}
-		return true
 	}
 }
