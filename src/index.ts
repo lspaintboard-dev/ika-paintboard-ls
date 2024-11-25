@@ -5,6 +5,7 @@ import { PaintBoardManager } from './paintboard'
 import { type TokenRequest, PaintResultCode, type WebSocketData } from './types'
 import { compress } from 'zstd.ts'
 import Bun from 'bun'
+import sharp from 'sharp'
 
 // 添加 logger 到全局作用域
 declare global {
@@ -46,6 +47,22 @@ try {
 }
 
 logger.level = config.logLevel
+
+async function bufferToWebP(
+	pixelData: Buffer,
+	width: number,
+	height: number
+): Promise<Buffer> {
+	const image = sharp(pixelData, {
+		raw: {
+			width,
+			height,
+			channels: 3
+		}
+	})
+	const webpBuffer = await image.webp({ lossless: true }).toBuffer()
+	return webpBuffer
+}
 
 let webSocketConnectionCount = 0
 
@@ -135,6 +152,25 @@ const server = Bun.serve<WebSocketData>({
 					}
 				})
 			}
+		}
+
+		if (url.pathname === '/api/paintboard/getimage') {
+			const startTime = Date.now()
+			const buffer = await paintboard.getBoardBuffer()
+			const compressed = await bufferToWebP(buffer, config.width, config.height)
+			logger.debug(
+				`getboard: ${Date.now() - startTime}ms (webp-lossless) ${
+					buffer.length
+				} -> ${compressed.length} (${(
+					compressed.length / buffer.length
+				).toFixed(2)}x)`
+			)
+			return new Response(compressed, {
+				headers: {
+					'Content-Type': 'image/webp',
+					'Access-Control-Allow-Origin': '*'
+				}
+			})
 		}
 
 		if (url.pathname === '/api/auth/gettoken' && req.method === 'POST') {
