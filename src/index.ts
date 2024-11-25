@@ -111,7 +111,7 @@ const server = Bun.serve<WebSocketData>({
 				logger.debug(
 					`getboard: ${Date.now() - startTime}ms (zstd) ${buffer.length} -> ${
 						compressed.length
-					}`
+					} (${(compressed.length / buffer.length).toFixed(2)}x)`
 				)
 				return new Response(compressed, {
 					headers: {
@@ -125,7 +125,7 @@ const server = Bun.serve<WebSocketData>({
 				logger.debug(
 					`getboard: ${Date.now() - startTime}ms (gzip) ${buffer.length} -> ${
 						compressed.length
-					}`
+					} (${(compressed.length / buffer.length).toFixed(2)}x)`
 				)
 				return new Response(compressed, {
 					headers: {
@@ -155,18 +155,12 @@ const server = Bun.serve<WebSocketData>({
 		publishToSelf: true, // 很明显要发给自己
 		open(ws) {
 			webSocketConnectionCount++
-			logger.debug(
-				{ wsId: ws.data.connectedAt },
-				`WebSocket connected: ${webSocketConnectionCount} clients`
-			)
+			logger.debug(`WebSocket connected: ${webSocketConnectionCount} clients`)
 			ws.subscribe('paint')
 		},
 		close(ws) {
 			webSocketConnectionCount--
-			logger.debug(
-				{ wsId: ws.data.connectedAt },
-				`WebSocket closed: ${webSocketConnectionCount} clients`
-			)
+			logger.debug(`WebSocket closed: ${webSocketConnectionCount} clients`)
 		},
 		message(ws, msg: Buffer) {
 			if (msg[0] === 0xfb) return // C2S pong
