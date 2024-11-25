@@ -13,7 +13,6 @@ export type PaintBoard = {
 export type Token = {
 	uid: number
 	token: string
-	lastPaint: number
 }
 
 export enum PaintResultCode {
