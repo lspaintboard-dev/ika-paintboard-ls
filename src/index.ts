@@ -4,6 +4,7 @@ import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
 import { type TokenRequest, PaintResultCode, type WebSocketData } from './types'
 import { compress } from 'zstd.ts'
+import Bun from 'bun'
 
 // 添加 logger 到全局作用域
 declare global {
@@ -97,16 +98,28 @@ const server = Bun.serve<WebSocketData>({
 
 		// HTTP API 处理
 		if (url.pathname === '/api/paintboard/getboard') {
-			const compressed = await compress({
-				input: paintboard.getBoardBuffer()
-			})
-			return new Response(compressed, {
-				headers: {
-					'Content-Type': 'application/octet-stream',
-					'Access-Control-Allow-Origin': '*',
-					'Content-Encoding': 'zstd'
-				}
-			})
+			const acceptEncoding = req.headers.get('accept-encoding') || ''
+			const buffer = paintboard.getBoardBuffer()
+
+			if (acceptEncoding.includes('zstd')) {
+				const compressed = await compress({ input: buffer })
+				return new Response(compressed, {
+					headers: {
+						'Content-Type': 'application/octet-stream',
+						'Access-Control-Allow-Origin': '*',
+						'Content-Encoding': 'zstd'
+					}
+				})
+			} else {
+				const compressed = Bun.gzipSync(new Uint8Array(buffer))
+				return new Response(compressed, {
+					headers: {
+						'Content-Type': 'application/octet-stream',
+						'Access-Control-Allow-Origin': '*',
+						'Content-Encoding': 'gzip'
+					}
+				})
+			}
 		}
 
 		if (url.pathname === '/api/auth/gettoken' && req.method === 'POST') {
