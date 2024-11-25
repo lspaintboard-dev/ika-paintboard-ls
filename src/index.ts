@@ -47,6 +47,8 @@ try {
 
 logger.level = config.logLevel
 
+let webSocketConnectionCount = 0
+
 const server = Bun.serve<WebSocketData>({
 	static: {
 		'/api': new Response('IkaPaintBoard Made by Ikaleio :)', {
@@ -86,8 +88,9 @@ const server = Bun.serve<WebSocketData>({
 						connectedAt: Date.now()
 					}
 				})
-			)
+			) {
 				return
+			}
 			return new Response('Upgrade failed', {
 				status: 500,
 				headers: {
@@ -98,11 +101,18 @@ const server = Bun.serve<WebSocketData>({
 
 		// HTTP API 处理
 		if (url.pathname === '/api/paintboard/getboard') {
+			const startTime = Date.now()
+
 			const acceptEncoding = req.headers.get('accept-encoding') || ''
 			const buffer = paintboard.getBoardBuffer()
 
 			if (acceptEncoding.includes('zstd')) {
 				const compressed = await compress({ input: buffer })
+				logger.debug(
+					`getboard: ${Date.now() - startTime}ms (zstd) ${buffer.length} -> ${
+						compressed.length
+					}`
+				)
 				return new Response(compressed, {
 					headers: {
 						'Content-Type': 'application/octet-stream',
@@ -112,6 +122,11 @@ const server = Bun.serve<WebSocketData>({
 				})
 			} else {
 				const compressed = Bun.gzipSync(new Uint8Array(buffer))
+				logger.debug(
+					`getboard: ${Date.now() - startTime}ms (gzip) ${buffer.length} -> ${
+						compressed.length
+					}`
+				)
 				return new Response(compressed, {
 					headers: {
 						'Content-Type': 'application/octet-stream',
@@ -139,11 +154,19 @@ const server = Bun.serve<WebSocketData>({
 		sendPings: false, // 已经有自定义 ping 机制了
 		publishToSelf: true, // 很明显要发给自己
 		open(ws) {
-			logger.debug({ wsId: ws.data.connectedAt }, 'WebSocket connected')
+			webSocketConnectionCount++
+			logger.debug(
+				{ wsId: ws.data.connectedAt },
+				`WebSocket connected: ${webSocketConnectionCount} clients`
+			)
 			ws.subscribe('paint')
 		},
 		close(ws) {
-			logger.debug({ wsId: ws.data.connectedAt }, 'WebSocket closed')
+			webSocketConnectionCount--
+			logger.debug(
+				{ wsId: ws.data.connectedAt },
+				`WebSocket closed: ${webSocketConnectionCount} clients`
+			)
 		},
 		message(ws, msg: Buffer) {
 			if (msg[0] === 0xfb) return // C2S pong
