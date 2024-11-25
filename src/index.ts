@@ -133,7 +133,7 @@ const server = Bun.serve<WebSocketData>({
 			}
 		})
 	},
-
+	idleTimeout: 120, // 你猜猜获取版面要多久
 	websocket: {
 		idleTimeout: 60, // 60s
 		sendPings: false, // 已经有自定义 ping 机制了
