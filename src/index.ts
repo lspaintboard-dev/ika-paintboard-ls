@@ -33,7 +33,8 @@ const configSchema = z.strictObject({
 	validationPaste: z.string().default('IkaPaintBoard'),
 	key: z.string().optional(),
 	cert: z.string().optional(),
-	maxWebSocketPerIP: z.number().min(0).default(0)
+	maxWebSocketPerIP: z.number().min(0).default(0),
+	banDuration: z.number().min(0).default(60000) // 默认封禁时间 60000ms (1分钟)
 })
 
 let config: z.infer<typeof configSchema>
@@ -70,6 +71,27 @@ let webSocketConnectionCount = 0
 // IP 连接统计
 const ipConnections = new Map<string, Bun.ServerWebSocket<WebSocketData>[]>()
 
+// IP 封禁记录
+const bannedIPs = new Map<string, number>()
+
+// 检查 IP 是否被封禁
+function isBanned(ip: string): boolean {
+	const banUntil = bannedIPs.get(ip)
+	if (!banUntil) return false
+
+	if (Date.now() >= banUntil) {
+		bannedIPs.delete(ip)
+		return false
+	}
+	return true
+}
+
+// 封禁指定 IP
+function banIP(ip: string) {
+	bannedIPs.set(ip, Date.now() + config.banDuration)
+	logger.warn(`IP ${ip} banned for ${config.banDuration}ms`)
+}
+
 const server = Bun.serve<WebSocketData>({
 	static: {
 		'/api': new Response('IkaPaintBoard Made by Ikaleio :)', {
@@ -88,6 +110,21 @@ const server = Bun.serve<WebSocketData>({
 		)
 	},
 	fetch: async (req: Request, server) => {
+		const ip = server.requestIP(req)
+
+		// 检查是否被封禁
+		if (ip && isBanned(ip.address)) {
+			return new Response('Too Many Requests', {
+				status: 429,
+				headers: {
+					'Access-Control-Allow-Origin': '*',
+					'Retry-After': Math.ceil(
+						(bannedIPs.get(ip.address)! - Date.now()) / 1000
+					).toString()
+				}
+			})
+		}
+
 		// 处理 CORS 预检请求
 		if (req.method === 'OPTIONS') {
 			return new Response(null, {
@@ -197,6 +234,12 @@ const server = Bun.serve<WebSocketData>({
 			const ip = ws.remoteAddress
 			ws.data.ip = ip
 
+			// 检查是否被封禁
+			if (isBanned(ip)) {
+				ws.close()
+				return
+			}
+
 			// 获取或创建该 IP 的连接数组
 			let connections = ipConnections.get(ip)
 			if (!connections) {
@@ -209,12 +252,14 @@ const server = Bun.serve<WebSocketData>({
 				config.maxWebSocketPerIP > 0 &&
 				connections.length >= config.maxWebSocketPerIP
 			) {
+				// 触发封禁
+				banIP(ip)
 				// 断开该 IP 的所有连接
 				for (const conn of connections) {
 					conn.close()
 				}
 				ipConnections.delete(ip)
-				logger.warn(`IP ${ip} exceeded WebSocket limit, all connections closed`)
+				logger.warn(`IP ${ip} exceeded WebSocket limit and got banned`)
 				ws.close()
 				return
 			}
