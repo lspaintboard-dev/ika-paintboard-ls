@@ -32,7 +32,8 @@ const configSchema = z.strictObject({
 	clearBoard: z.boolean().default(false),
 	validationPaste: z.string().default('IkaPaintBoard'),
 	key: z.string().optional(),
-	cert: z.string().optional()
+	cert: z.string().optional(),
+	maxWebSocketPerIP: z.number().min(0).default(0)
 })
 
 let config: z.infer<typeof configSchema>
@@ -65,6 +66,9 @@ async function bufferToWebP(
 }
 
 let webSocketConnectionCount = 0
+
+// IP 连接统计
+const ipConnections = new Map<string, Bun.ServerWebSocket<WebSocketData>[]>()
 
 const server = Bun.serve<WebSocketData>({
 	static: {
@@ -190,13 +194,50 @@ const server = Bun.serve<WebSocketData>({
 		sendPings: false, // 已经有自定义 ping 机制了
 		publishToSelf: true, // 很明显要发给自己
 		open(ws) {
+			const ip = ws.remoteAddress
+			ws.data.ip = ip
+
+			// 获取或创建该 IP 的连接数组
+			let connections = ipConnections.get(ip)
+			if (!connections) {
+				connections = []
+				ipConnections.set(ip, connections)
+			}
+
+			// 检查是否超过限制
+			if (
+				config.maxWebSocketPerIP > 0 &&
+				connections.length >= config.maxWebSocketPerIP
+			) {
+				// 断开该 IP 的所有连接
+				for (const conn of connections) {
+					conn.close()
+				}
+				ipConnections.delete(ip)
+				logger.warn(`IP ${ip} exceeded WebSocket limit, all connections closed`)
+				ws.close()
+				return
+			}
+
+			connections.push(ws)
 			webSocketConnectionCount++
 			logger.debug(
-				`WebSocket connected (${ws.remoteAddress}): ${webSocketConnectionCount} clients`
+				`WebSocket connected (${ip}): ${webSocketConnectionCount} clients`
 			)
 			ws.subscribe('paint')
 		},
 		close(ws) {
+			const ip = ws.data.ip
+			const connections = ipConnections.get(ip)
+			if (connections) {
+				const index = connections.indexOf(ws)
+				if (index > -1) {
+					connections.splice(index, 1)
+				}
+				if (connections.length === 0) {
+					ipConnections.delete(ip)
+				}
+			}
 			webSocketConnectionCount--
 			logger.debug(`WebSocket closed: ${webSocketConnectionCount} clients`)
 		},

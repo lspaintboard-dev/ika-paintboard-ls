@@ -34,10 +34,7 @@ export type WebSocketData = {
 	lastPing: number
 	uid?: number
 	token?: string
-}
-
-export interface WebSocketServer {
-	publish(topic: string, data: Uint8Array): void
+	ip: string // 添加 IP 字段
 }
 
 export type ColorUpdateListener = (x: number, y: number, color: Color) => void

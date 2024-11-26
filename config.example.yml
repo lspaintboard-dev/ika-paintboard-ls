@@ -5,5 +5,6 @@ validationPaste: 'LSPaintBoard-2025' # 云剪切板验证码
 useDB: true # 是否使用数据库
 clearBoard: true # 是否在启动时清空画板
 debounceDelay: 0 # 防抖延迟
+# maxWebSocketPerIP: 7 # 每个 IP 最大 WebSocket 连接数
 # key: ./key.pem # SSL证书
 # cert: ./cert.pem # SSL证书
