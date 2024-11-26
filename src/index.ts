@@ -510,12 +510,12 @@ setInterval(() => {
 	for (const [ip, connections] of ipConnections) {
 		for (const ws of connections) {
 			const timeSincelastPing = Date.now() - ws.data.lastPing
-			if (timeSincelastPing > 30000) {
+			if (timeSincelastPing > 5000) {
 				logger.debug(`WebSocket ping timeout for ${ip}`)
 				ws.close()
 			}
 		}
 	}
-}, 30000)
+}, 5000)
 
 logger.info(`Server started on port ${config.port}`)
