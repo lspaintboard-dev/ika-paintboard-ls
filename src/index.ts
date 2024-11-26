@@ -95,6 +95,9 @@ function banIP(ip: string) {
 let globalPacketsReceived = 0
 let globalPacketsSent = 0
 
+// 添加服务器刻追踪
+let lastTick = 0
+
 const server = Bun.serve<WebSocketData>({
 	static: {
 		'/api': new Response('IkaPaintBoard Made by Ikaleio :)', {
@@ -351,8 +354,15 @@ paintboard.onColorUpdate(batchUpdate => {
 	if (sent > 0) globalPacketsSent += ipConnections.size
 })
 
-// 定期发送更新
+// 服务器刻处理：定期发送更新
 setInterval(() => {
+	const now = Date.now()
+	const elapsed = now - lastTick
+	if (elapsed > 1000 / config.ticksPerSecond + 50)
+		logger.warn(
+			`Can't keep up! Is the server overloaded? Last tick took ${elapsed}ms!`
+		)
+	lastTick = now
 	for (const [ip, connections] of ipConnections) {
 		for (const ws of connections) {
 			const buffer = ws.data.sendBuffer.flush() as Uint8Array
@@ -476,12 +486,11 @@ setInterval(() => {
 		for (const ws of connections) {
 			const timeSincelastPing = Date.now() - ws.data.lastPing
 			if (timeSincelastPing > 30000) {
-				// 5秒超时
 				logger.debug(`WebSocket ping timeout for ${ip}`)
 				ws.close()
 			}
 		}
 	}
-}, 30000) // 改为每5秒发送一次ping
+}, 30000)
 
 logger.info(`Server started on port ${config.port}`)
