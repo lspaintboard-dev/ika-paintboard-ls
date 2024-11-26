@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html class="no-js">
 
@@ -236,34 +235,47 @@
         };
 
         ws.onmessage = function(event) {
-            const raw_message = new Uint8Array(event.data);
-            const [type, data] = [raw_message[0], raw_message.slice(1)];
-            
-            switch(type) {
-                case 0xfa: { // set_color
-                    const x = data[1] * 256 + data[0];
-                    const y = data[3] * 256 + data[2];
-                    const colorR = data[4];
-                    const colorG = data[5]; 
-                    const colorB = data[6];
-                    update(y, x, "#" + colorR.toString(16).padStart(2,'0') + 
-                                 colorG.toString(16).padStart(2,'0') + 
-                                 colorB.toString(16).padStart(2,'0'));
-                    break;
-                }
-                case 0xfc: { // ping
-                    ws.send(new Uint8Array([0xfb])); // pong
-                    break;
-                }
-                case 0xff: { // paint_result
-                    const id = data[0] + data[1] * 256;
-                    const code = data[2];
-                    const cb = paintCb.get(id);
-                    if(cb) {
-                        cb(code);
-                        paintCb.delete(id);
+            // 使用 DataView 来处理二进制数据
+            const buffer = event.data
+            const dataView = new DataView(buffer)
+            let offset = 0
+
+            // 循环处理所有包
+            while (offset < buffer.byteLength) {
+                const type = dataView.getUint8(offset)
+                offset += 1
+
+                switch(type) {
+                    case 0xfa: { // set_color 包长度为 8 字节
+                        const x = dataView.getUint16(offset, true) // true 表示小端序
+                        const y = dataView.getUint16(offset + 2, true)
+                        const colorR = dataView.getUint8(offset + 4)
+                        const colorG = dataView.getUint8(offset + 5)
+                        const colorB = dataView.getUint8(offset + 6)
+                        offset += 7
+
+                        update(y, x, "#" + 
+                            colorR.toString(16).padStart(2,'0') + 
+                            colorG.toString(16).padStart(2,'0') + 
+                            colorB.toString(16).padStart(2,'0'));
+                        break;
                     }
-                    break;
+                    case 0xfc: { // ping 包长度为 1 字节
+                        ws.send(new Uint8Array([0xfb])); // pong
+                        break;
+                    }
+                    case 0xff: { // paint_result 包长度为 4 字节
+                        const id = dataView.getUint16(offset, true)
+                        const code = dataView.getUint8(offset + 2)
+                        offset += 3
+                        
+                        const cb = paintCb.get(id)
+                        if(cb) {
+                            cb(code)
+                            paintCb.delete(id)
+                        }
+                        break;
+                    }
                 }
             }
         };
