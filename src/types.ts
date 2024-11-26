@@ -35,6 +35,8 @@ export type WebSocketData = {
 	uid?: number
 	token?: string
 	ip: string
+	packetsReceived: number
+	packetsSent: number
 }
 
 export type ColorUpdateListener = (batchUpdate: Uint8Array) => void

@@ -90,6 +90,10 @@ function banIP(ip: string) {
 	logger.warn(`IP ${ip} banned for ${config.banDuration}ms`)
 }
 
+// 添加全局计数器
+let globalPacketsReceived = 0
+let globalPacketsSent = 0
+
 const server = Bun.serve<WebSocketData>({
 	static: {
 		'/api': new Response('IkaPaintBoard Made by Ikaleio :)', {
@@ -250,6 +254,10 @@ const server = Bun.serve<WebSocketData>({
 				`WebSocket connected (${ip}): ${webSocketConnectionCount} clients`
 			)
 			ws.subscribe('paint')
+
+			// 初始化包计数器
+			ws.data.packetsReceived = 0
+			ws.data.packetsSent = 0
 		},
 		close(ws) {
 			const ip = ws.data.ip
@@ -267,6 +275,10 @@ const server = Bun.serve<WebSocketData>({
 			logger.debug(`WebSocket closed: ${webSocketConnectionCount} clients`)
 		},
 		message(ws, msg: Buffer) {
+			// 更新接收计数
+			ws.data.packetsReceived++
+			globalPacketsReceived++
+
 			if (msg[0] === 0xfb) return // C2S pong
 
 			if (msg[0] === 0xfe) {
@@ -326,6 +338,33 @@ const paintboard = new PaintBoardManager(
 paintboard.onColorUpdate(batchUpdate => {
 	server.publish('paint', batchUpdate, true)
 })
+
+// 重写 server.publish 来统计发送的包
+const originalPublish = server.publish.bind(server)
+server.publish = (topic: string, data: any, publishToSelf?: boolean) => {
+	globalPacketsSent += webSocketConnectionCount
+	// 更新每个连接的发送计数
+	for (const [_, connections] of ipConnections) {
+		for (const ws of connections) {
+			ws.data.packetsSent++
+		}
+	}
+	return originalPublish(topic, data, publishToSelf)
+}
+
+// 添加吞吐量监控
+setInterval(() => {
+	logger.info(
+		`WebSocket Traffic - Received: ${globalPacketsReceived} packets (${(
+			globalPacketsReceived / 5
+		).toFixed(2)}/s), Sent: ${globalPacketsSent} packets (${(
+			globalPacketsSent / 5
+		).toFixed(2)}/s)`
+	)
+	// 重置计数器
+	globalPacketsReceived = 0
+	globalPacketsSent = 0
+}, 5000)
 
 // 优雅退出处理
 function handleShutdown() {
