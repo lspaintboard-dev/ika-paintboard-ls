@@ -20,9 +20,6 @@ export class PaintBoardManager {
 	private db?: DBManager
 	private autoSaveInterval?: Timer
 	private lastPaintTime: Map<string, number> = new Map()
-	private pendingPixels: Array<Array<{ color: Color; timeout: Timer } | null>> =
-		[]
-	private debounceDelay: number
 	private colorUpdateListener?: ColorUpdateListener
 
 	constructor(
@@ -31,8 +28,7 @@ export class PaintBoardManager {
 		paintDelay: number,
 		validationPaste: string,
 		useDB: boolean,
-		clearBoard: boolean,
-		debounceDelay: number
+		clearBoard: boolean
 	) {
 		if (useDB) {
 			this.db = new DBManager()
@@ -63,12 +59,6 @@ export class PaintBoardManager {
 
 		this.paintDelay = paintDelay
 		this.validationPaste = validationPaste
-		this.debounceDelay = debounceDelay
-
-		// 初始化待处理像素数组
-		this.pendingPixels = Array(height)
-			.fill(null)
-			.map(() => Array(width).fill(null))
 	}
 
 	private initializeBoard(width: number, height: number) {
@@ -106,24 +96,6 @@ export class PaintBoardManager {
 	public setPixel(x: number, y: number, color: Color): boolean {
 		if (x < 0 || x >= this.board.width || y < 0 || y >= this.board.height) {
 			return false
-		}
-
-		if (this.debounceDelay > 0) {
-			const existing = this.pendingPixels[y][x]
-			if (existing) {
-				// 直接更新颜色值,不重置定时器
-				existing.color = color
-				return true
-			}
-
-			const timeout = setTimeout(() => {
-				this.board.pixels[y][x] = color
-				this.colorUpdateListener?.(x, y, color)
-				this.pendingPixels[y][x] = null
-			}, this.debounceDelay)
-
-			this.pendingPixels[y][x] = { color, timeout }
-			return true
 		}
 
 		this.board.pixels[y][x] = color
@@ -164,15 +136,6 @@ export class PaintBoardManager {
 		if (this.db) {
 			this.saveToDb()
 			this.db.close()
-		}
-		// 清理所有待处理的防抖计时器
-		for (let y = 0; y < this.board.height; y++) {
-			for (let x = 0; x < this.board.width; x++) {
-				const pending = this.pendingPixels[y][x]
-				if (pending) {
-					clearTimeout(pending.timeout)
-				}
-			}
 		}
 	}
 

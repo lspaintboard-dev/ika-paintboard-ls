@@ -25,7 +25,6 @@ const configSchema = z.strictObject({
 	logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']),
 	port: z.number(),
 	paintDelay: z.number().min(0),
-	debounceDelay: z.number().min(0).default(0),
 	useDB: z.boolean().default(false),
 	width: z.number().min(1).default(1000),
 	height: z.number().min(1).default(600),
@@ -34,7 +33,7 @@ const configSchema = z.strictObject({
 	key: z.string().optional(),
 	cert: z.string().optional(),
 	maxWebSocketPerIP: z.number().min(0).default(0),
-	banDuration: z.number().min(0).default(60000) // 默认封禁时间 60000ms (1分钟)
+	banDuration: z.number().min(0).default(60000)
 })
 
 let config: z.infer<typeof configSchema>
@@ -86,7 +85,7 @@ function isBanned(ip: string): boolean {
 	return true
 }
 
-// 封禁指定 IP
+// 封���指定 IP
 function banIP(ip: string) {
 	bannedIPs.set(ip, Date.now() + config.banDuration)
 	logger.warn(`IP ${ip} banned for ${config.banDuration}ms`)
@@ -160,39 +159,21 @@ const server = Bun.serve<WebSocketData>({
 		// HTTP API 处理
 		if (url.pathname === '/api/paintboard/getboard') {
 			const startTime = Date.now()
-
-			const acceptEncoding = req.headers.get('accept-encoding') || ''
 			const buffer = paintboard.getBoardBuffer()
 
-			if (acceptEncoding.includes('zstd')) {
-				const compressed = await compress({ input: buffer })
-				logger.debug(
-					`getboard: ${Date.now() - startTime}ms (zstd) ${buffer.length} -> ${
-						compressed.length
-					} (${(compressed.length / buffer.length).toFixed(2)}x)`
-				)
-				return new Response(compressed, {
-					headers: {
-						'Content-Type': 'application/octet-stream',
-						'Access-Control-Allow-Origin': '*',
-						'Content-Encoding': 'zstd'
-					}
-				})
-			} else {
-				const compressed = Bun.gzipSync(new Uint8Array(buffer))
-				logger.debug(
-					`getboard: ${Date.now() - startTime}ms (gzip) ${buffer.length} -> ${
-						compressed.length
-					} (${(compressed.length / buffer.length).toFixed(2)}x)`
-				)
-				return new Response(compressed, {
-					headers: {
-						'Content-Type': 'application/octet-stream',
-						'Access-Control-Allow-Origin': '*',
-						'Content-Encoding': 'gzip'
-					}
-				})
-			}
+			const compressed = Bun.gzipSync(new Uint8Array(buffer))
+			logger.debug(
+				`getboard: ${Date.now() - startTime}ms (gzip) ${buffer.length} -> ${
+					compressed.length
+				} (${(compressed.length / buffer.length).toFixed(2)}x)`
+			)
+			return new Response(compressed, {
+				headers: {
+					'Content-Type': 'application/octet-stream',
+					'Access-Control-Allow-Origin': '*',
+					'Content-Encoding': 'gzip'
+				}
+			})
 		}
 
 		if (url.pathname === '/api/paintboard/getimage') {
@@ -311,8 +292,6 @@ const server = Bun.serve<WebSocketData>({
 				let result = paintboard.validateToken(token, uid)
 				if (result === PaintResultCode.SUCCESS) {
 					const success = paintboard.setPixel(x, y, color)
-
-					// 移除直接发送逻辑,现在由 PaintBoardManager 处理
 					if (!success) {
 						result = PaintResultCode.BAD_FORMAT
 					}
@@ -341,8 +320,7 @@ const paintboard = new PaintBoardManager(
 	config.paintDelay,
 	config.validationPaste,
 	config.useDB,
-	config.clearBoard,
-	config.debounceDelay
+	config.clearBoard
 )
 
 // 注册颜色更新事件处理
