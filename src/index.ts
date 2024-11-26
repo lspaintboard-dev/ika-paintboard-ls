@@ -289,41 +289,66 @@ const server = Bun.serve<WebSocketData>({
 			ws.data.packetsReceived++
 			globalPacketsReceived++
 
-			if (msg[0] === 0xfb) {
-				// C2S pong - 更新最后响应时间
-				ws.data.lastPing = Date.now()
-				return
-			}
+			// 使用 DataView 解析二进制数据
+			const dataView = new DataView(msg.buffer)
+			let offset = 0
 
-			if (msg[0] === 0xfe) {
-				// C2S paint
-				const x = msg[1] + msg[2] * 256
-				const y = msg[3] + msg[4] * 256
-				const color = {
-					r: msg[5],
-					g: msg[6],
-					b: msg[7]
-				}
-				const uid = msg[8] * 65536 + msg[9] * 256 + msg[10]
-				const token = [
-					msg.subarray(11, 15).toString('hex'),
-					msg.subarray(15, 17).toString('hex'),
-					msg.subarray(17, 19).toString('hex'),
-					msg.subarray(19, 21).toString('hex'),
-					msg.subarray(21, 27).toString('hex')
-				].join('-')
-				const id = msg[27] + msg[28] * 256
+			// 循环处理所有包
+			while (offset < msg.length) {
+				const type = dataView.getUint8(offset)
+				offset += 1
 
-				let result = paintboard.validateToken(token, uid)
-				if (result === PaintResultCode.SUCCESS) {
-					const success = paintboard.setPixel(x, y, color)
-					if (!success) {
-						result = PaintResultCode.BAD_FORMAT
+				switch (type) {
+					case 0xfb: // C2S pong
+						// 更新最后响应时间
+						ws.data.lastPing = Date.now()
+						break
+
+					case 0xfe: {
+						// C2S paint (29字节)
+						const x = dataView.getUint16(offset, true)
+						const y = dataView.getUint16(offset + 2, true)
+						const color = {
+							r: dataView.getUint8(offset + 4),
+							g: dataView.getUint8(offset + 5),
+							b: dataView.getUint8(offset + 6)
+						}
+						const uid =
+							dataView.getUint8(offset + 7) * 65536 +
+							dataView.getUint8(offset + 8) * 256 +
+							dataView.getUint8(offset + 9)
+
+						// 处理 token (16字节)
+						const tokenBytes = new Uint8Array(msg.buffer, offset + 10, 16)
+						const token = [
+							Buffer.from(tokenBytes.slice(0, 4)).toString('hex'),
+							Buffer.from(tokenBytes.slice(4, 6)).toString('hex'),
+							Buffer.from(tokenBytes.slice(6, 8)).toString('hex'),
+							Buffer.from(tokenBytes.slice(8, 10)).toString('hex'),
+							Buffer.from(tokenBytes.slice(10, 16)).toString('hex')
+						].join('-')
+
+						const id = dataView.getUint16(offset + 26, true)
+						offset += 28
+
+						let result = paintboard.validateToken(token, uid)
+						if (result === PaintResultCode.SUCCESS) {
+							const success = paintboard.setPixel(x, y, color)
+							if (!success) {
+								result = PaintResultCode.BAD_FORMAT
+							}
+						}
+
+						const response = new Uint8Array([0xff, id & 255, id >> 8, result])
+						ws.data.sendBuffer.write(response) // S2C paint_result
+						break
 					}
-				}
 
-				const response = new Uint8Array([0xff, id & 255, id >> 8, result])
-				ws.data.sendBuffer.write(response) // S2C paint_result
+					default:
+						logger.warn(`Unknown packet type: ${type}`)
+						ws.close()
+						return
+				}
 			}
 		}
 	},
