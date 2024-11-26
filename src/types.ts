@@ -34,7 +34,7 @@ export type WebSocketData = {
 	lastPing: number
 	uid?: number
 	token?: string
-	ip: string // 添加 IP 字段
+	ip: string
 }
 
-export type ColorUpdateListener = (x: number, y: number, color: Color) => void
+export type ColorUpdateListener = (batchUpdate: Uint8Array) => void

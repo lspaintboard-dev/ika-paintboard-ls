@@ -21,6 +21,8 @@ export class PaintBoardManager {
 	private autoSaveInterval?: Timer
 	private lastPaintTime: Map<string, number> = new Map()
 	private colorUpdateListener?: ColorUpdateListener
+	private dirtyPixels: Set<number> = new Set()
+	private hasPendingUpdate: boolean = false
 
 	constructor(
 		width: number,
@@ -99,8 +101,53 @@ export class PaintBoardManager {
 		}
 
 		this.board.pixels[y][x] = color
-		this.colorUpdateListener?.(x, y, color)
+
+		// 将坐标转换为唯一标识并加入脏像素集合
+		const pixelId = y * this.board.width + x
+		this.dirtyPixels.add(pixelId)
+
+		// 如果没有待处理的更新，创建一个微任务
+		if (!this.hasPendingUpdate) {
+			this.hasPendingUpdate = true
+			queueMicrotask(() => this.flushUpdates())
+		}
+
 		return true
+	}
+
+	private flushUpdates() {
+		if (this.dirtyPixels.size > 0 && this.colorUpdateListener) {
+			const sink = new Bun.ArrayBufferSink()
+			sink.start({
+				asUint8Array: true
+			})
+
+			for (const pixelId of this.dirtyPixels) {
+				const y = Math.floor(pixelId / this.board.width)
+				const x = pixelId % this.board.width
+				const color = this.board.pixels[y][x]
+
+				// 按照协议格式构造单个像素更新包
+				sink.write(
+					new Uint8Array([
+						0xfa,
+						x & 255,
+						x >> 8,
+						y & 255,
+						y >> 8,
+						color.r,
+						color.g,
+						color.b
+					])
+				)
+			}
+
+			// 发送合并后的更新
+			this.colorUpdateListener(sink.end() as Uint8Array)
+		}
+
+		this.dirtyPixels.clear()
+		this.hasPendingUpdate = false
 	}
 
 	public async generateToken(

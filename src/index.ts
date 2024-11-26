@@ -84,7 +84,7 @@ function isBanned(ip: string): boolean {
 	return true
 }
 
-// 封���指定 IP
+// 封禁指��� IP
 function banIP(ip: string) {
 	bannedIPs.set(ip, Date.now() + config.banDuration)
 	logger.warn(`IP ${ip} banned for ${config.banDuration}ms`)
@@ -322,19 +322,9 @@ const paintboard = new PaintBoardManager(
 	config.clearBoard
 )
 
-// 注册颜色更新事件处理
-paintboard.onColorUpdate((x, y, color) => {
-	const setColorMsg = new Uint8Array([
-		0xfa,
-		x & 255,
-		x >> 8,
-		y & 255,
-		y >> 8,
-		color.r,
-		color.g,
-		color.b
-	])
-	server.publish('paint', setColorMsg)
+// 修改颜色更新事件处理
+paintboard.onColorUpdate(batchUpdate => {
+	server.publish('paint', batchUpdate, true)
 })
 
 // 优雅退出处理
