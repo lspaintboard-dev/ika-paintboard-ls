@@ -383,7 +383,7 @@ paintboard.onColorUpdate(batchUpdate => {
 setInterval(() => {
 	const now = Date.now()
 	const elapsed = now - lastTick
-	if (elapsed > 1000 / config.ticksPerSecond + 50)
+	if (lastTick && elapsed > 1000 / config.ticksPerSecond + 50)
 		logger.warn(
 			`Can't keep up! Is the server overloaded? Last tick took ${elapsed}ms!`
 		)
