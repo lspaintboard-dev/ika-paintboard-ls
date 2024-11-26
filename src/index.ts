@@ -191,7 +191,9 @@ const server = Bun.serve<WebSocketData>({
 		publishToSelf: true, // 很明显要发给自己
 		open(ws) {
 			webSocketConnectionCount++
-			logger.debug(`WebSocket connected: ${webSocketConnectionCount} clients`)
+			logger.debug(
+				`WebSocket connected (${ws.remoteAddress}): ${webSocketConnectionCount} clients`
+			)
 			ws.subscribe('paint')
 		},
 		close(ws) {
