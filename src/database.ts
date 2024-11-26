@@ -19,8 +19,7 @@ export class DBManager {
             );
             CREATE TABLE IF NOT EXISTS tokens (
                 token TEXT PRIMARY KEY,
-                uid INTEGER NOT NULL,
-                last_paint INTEGER NOT NULL
+                uid INTEGER NOT NULL
             );
         `)
 
@@ -31,11 +30,9 @@ export class DBManager {
 			'SELECT width, height, pixels FROM board_data WHERE id = 1'
 		)
 		this.saveTokenStmt = this.db.prepare(
-			'INSERT OR REPLACE INTO tokens (token, uid, last_paint) VALUES (?, ?, ?)'
+			'INSERT OR REPLACE INTO tokens (token, uid) VALUES (?, ?)'
 		)
-		this.loadTokensStmt = this.db.prepare(
-			'SELECT token, uid, last_paint FROM tokens'
-		)
+		this.loadTokensStmt = this.db.prepare('SELECT token, uid FROM tokens')
 
 		// 改为异步初始化
 		this.init()
@@ -60,7 +57,7 @@ export class DBManager {
 
 			this.db.transaction(() => {
 				for (const { uid, token } of tokens) {
-					this.saveTokenStmt.run(token, uid, 0) // lastPaint 设为 0
+					this.saveTokenStmt.run(token, uid)
 				}
 			})()
 
@@ -125,7 +122,6 @@ export class DBManager {
 		const rows = this.loadTokensStmt.all() as {
 			token: string
 			uid: number
-			last_paint: number
 		}[]
 
 		for (const row of rows) {

@@ -151,8 +151,7 @@ export class PaintBoardManager {
 			const token = randomUUID()
 			const tokenInfo = {
 				uid,
-				token,
-				lastPaint: 0
+				token
 			}
 			this.tokens.set(token, tokenInfo)
 			this.db?.saveToken(tokenInfo)
