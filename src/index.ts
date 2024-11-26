@@ -451,7 +451,7 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 				statusCode: 400,
 				data: {
 					errorType: 'BAD_REQUEST',
-					message: 'Invalid request format'
+					message: 'Error parsing request body: ' + e.message
 				}
 			}),
 			{
