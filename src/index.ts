@@ -446,6 +446,7 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 			}
 		)
 	} catch (e) {
+		logger.error(e, 'Failed to parse token request')
 		return new Response(
 			JSON.stringify({
 				statusCode: 400,
