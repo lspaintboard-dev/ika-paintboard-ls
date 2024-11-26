@@ -71,7 +71,7 @@ export class PaintBoardManager {
 				.map(() =>
 					Array(width)
 						.fill(0)
-						.map(() => ({ r: 221, g: 221, b: 221 }))
+						.map(() => ({ r: 170, g: 170, b: 170 }))
 				)
 		}
 	}

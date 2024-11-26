@@ -100,7 +100,7 @@ export class DBManager {
 		const { width, height, pixels } = row
 		const result: Color[][] = Array(height)
 			.fill(0)
-			.map(() => Array(width).fill({ r: 221, g: 221, b: 221 }))
+			.map(() => Array(width).fill({ r: 170, g: 170, b: 170 }))
 
 		for (let y = 0; y < height; y++) {
 			for (let x = 0; x < width; x++) {
