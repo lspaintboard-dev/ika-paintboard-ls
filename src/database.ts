@@ -117,7 +117,7 @@ export class DBManager {
 	}
 
 	public saveToken(token: Token) {
-		this.saveTokenStmt.run(token.token, token.uid, token.lastPaint)
+		this.saveTokenStmt.run(token.token, token.uid)
 	}
 
 	public loadTokens(): Map<string, Token> {
@@ -131,8 +131,7 @@ export class DBManager {
 		for (const row of rows) {
 			tokens.set(row.token, {
 				token: row.token,
-				uid: row.uid,
-				lastPaint: row.last_paint
+				uid: row.uid
 			})
 		}
 

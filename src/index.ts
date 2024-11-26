@@ -3,7 +3,6 @@ import { parse as parseYaml } from 'yaml'
 import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
 import { type TokenRequest, PaintResultCode, type WebSocketData } from './types'
-import { compress } from 'zstd.ts'
 import Bun from 'bun'
 import sharp from 'sharp'
 
