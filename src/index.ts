@@ -355,7 +355,8 @@ paintboard.onColorUpdate(batchUpdate => {
 setInterval(() => {
 	for (const [ip, connections] of ipConnections) {
 		for (const ws of connections) {
-			ws.send(ws.data.sendBuffer.flush() as Uint8Array)
+			const buffer = ws.data.sendBuffer.flush() as Uint8Array
+			if (buffer.length > 0) ws.send(buffer)
 		}
 	}
 	paintboard.flushUpdates()
