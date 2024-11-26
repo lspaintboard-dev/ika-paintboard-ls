@@ -32,7 +32,8 @@ const configSchema = z.strictObject({
 	key: z.string().optional(),
 	cert: z.string().optional(),
 	maxWebSocketPerIP: z.number().min(0).default(0),
-	banDuration: z.number().min(0).default(60000)
+	banDuration: z.number().min(0).default(60000),
+	ticksPerSecond: z.number().min(1).default(128)
 })
 
 let config: z.infer<typeof configSchema>
@@ -84,7 +85,7 @@ function isBanned(ip: string): boolean {
 	return true
 }
 
-// 封禁指��� IP
+// 封禁指定 IP
 function banIP(ip: string) {
 	bannedIPs.set(ip, Date.now() + config.banDuration)
 	logger.warn(`IP ${ip} banned for ${config.banDuration}ms`)
@@ -217,6 +218,11 @@ const server = Bun.serve<WebSocketData>({
 		open(ws) {
 			const ip = ws.remoteAddress
 			ws.data.ip = ip
+			ws.data.sendBuffer = new Bun.ArrayBufferSink()
+			ws.data.sendBuffer.start({
+				asUint8Array: true,
+				stream: true
+			})
 
 			// 检查是否被封禁
 			if (isBanned(ip)) {
@@ -255,11 +261,12 @@ const server = Bun.serve<WebSocketData>({
 			)
 			ws.subscribe('paint')
 
-			// 初始化包计数器
+			// 初始化最后响应时间
+			ws.data.lastPing = Date.now()
 			ws.data.packetsReceived = 0
-			ws.data.packetsSent = 0
 		},
 		close(ws) {
+			ws.data.sendBuffer.flush()
 			const ip = ws.data.ip
 			const connections = ipConnections.get(ip)
 			if (connections) {
@@ -279,7 +286,11 @@ const server = Bun.serve<WebSocketData>({
 			ws.data.packetsReceived++
 			globalPacketsReceived++
 
-			if (msg[0] === 0xfb) return // C2S pong
+			if (msg[0] === 0xfb) {
+				// C2S pong - 更新最后响应时间
+				ws.data.lastPing = Date.now()
+				return
+			}
 
 			if (msg[0] === 0xfe) {
 				// C2S paint
@@ -309,7 +320,7 @@ const server = Bun.serve<WebSocketData>({
 				}
 
 				const response = new Uint8Array([0xff, id & 255, id >> 8, result])
-				ws.send(response) // S2C paint_result
+				ws.data.sendBuffer.write(response) // S2C paint_result
 			}
 		}
 	},
@@ -334,23 +345,21 @@ const paintboard = new PaintBoardManager(
 	config.clearBoard
 )
 
-// 修改颜色更新事件处理
+// 颜色更新事件处理
 paintboard.onColorUpdate(batchUpdate => {
-	server.publish('paint', batchUpdate, true)
+	const sent = server.publish('paint', batchUpdate, true)
+	if (sent > 0) globalPacketsSent += ipConnections.size
 })
 
-// 重写 server.publish 来统计发送的包
-const originalPublish = server.publish.bind(server)
-server.publish = (topic: string, data: any, publishToSelf?: boolean) => {
-	globalPacketsSent += webSocketConnectionCount
-	// 更新每个连接的发送计数
-	for (const [_, connections] of ipConnections) {
+// 定期发送更新
+setInterval(() => {
+	for (const [ip, connections] of ipConnections) {
 		for (const ws of connections) {
-			ws.data.packetsSent++
+			ws.send(ws.data.sendBuffer.flush() as Uint8Array)
 		}
 	}
-	return originalPublish(topic, data, publishToSelf)
-}
+	paintboard.flushUpdates()
+}, 1000 / config.ticksPerSecond)
 
 // 添加吞吐量监控
 setInterval(() => {
@@ -456,9 +465,21 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 	}
 }
 
-// 定期发送 ping 包
+// 定期发送 ping 包并检查超时
 setInterval(() => {
 	server.publish('paint', new Uint8Array([0xfc])) // S2C ping
-}, 30000)
+
+	// 检查所有连接的ping超时
+	for (const [ip, connections] of ipConnections) {
+		for (const ws of connections) {
+			const timeSincelastPing = Date.now() - ws.data.lastPing
+			if (timeSincelastPing > 30000) {
+				// 5秒超时
+				logger.debug(`WebSocket ping timeout for ${ip}`)
+				ws.close()
+			}
+		}
+	}
+}, 30000) // 改为每5秒发送一次ping
 
 logger.info(`Server started on port ${config.port}`)

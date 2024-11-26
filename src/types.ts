@@ -1,3 +1,5 @@
+import Bun from 'bun'
+
 export type Color = {
 	r: number
 	g: number
@@ -36,7 +38,7 @@ export type WebSocketData = {
 	token?: string
 	ip: string
 	packetsReceived: number
-	packetsSent: number
+	sendBuffer: Bun.ArrayBufferSink
 }
 
 export type ColorUpdateListener = (batchUpdate: Uint8Array) => void

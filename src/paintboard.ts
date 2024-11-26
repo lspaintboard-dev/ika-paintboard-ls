@@ -22,7 +22,6 @@ export class PaintBoardManager {
 	private lastPaintTime: Map<string, number> = new Map()
 	private colorUpdateListener?: ColorUpdateListener
 	private dirtyPixels: Set<number> = new Set()
-	private hasPendingUpdate: boolean = false
 
 	constructor(
 		width: number,
@@ -106,16 +105,10 @@ export class PaintBoardManager {
 		const pixelId = y * this.board.width + x
 		this.dirtyPixels.add(pixelId)
 
-		// 如果没有待处理的更新，创建一个微任务
-		if (!this.hasPendingUpdate) {
-			this.hasPendingUpdate = true
-			queueMicrotask(() => this.flushUpdates())
-		}
-
 		return true
 	}
 
-	private flushUpdates() {
+	public flushUpdates() {
 		if (this.dirtyPixels.size > 0 && this.colorUpdateListener) {
 			const sink = new Bun.ArrayBufferSink()
 			sink.start({
@@ -147,7 +140,6 @@ export class PaintBoardManager {
 		}
 
 		this.dirtyPixels.clear()
-		this.hasPendingUpdate = false
 	}
 
 	public async generateToken(
