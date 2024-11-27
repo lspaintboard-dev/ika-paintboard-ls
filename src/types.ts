@@ -42,6 +42,7 @@ export type WebSocketData = {
 	pingInterval?: Timer // setInterval 返回值的类型
 	waitingPong: boolean // 是否正在等待 pong 响应
 	lastPacketCountReset: number // 添加上次重置计数的时间
+	tokenUsageCount: Set<string> // 存储使用过的 token
 }
 
 export type ColorUpdateListener = (batchUpdate: Uint8Array) => void

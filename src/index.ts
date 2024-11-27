@@ -282,6 +282,7 @@ const server = Bun.serve<WebSocketData>({
 				ws.data.waitingPong = true
 				ws.data.sendBuffer.write(new Uint8Array([0xfc])) // S2C ping
 			}, 20000)
+			ws.data.tokenUsageCount = new Set() // 初始化为空 Set
 		},
 		close(ws) {
 			// 清理 ping 定时器
@@ -379,6 +380,9 @@ const server = Bun.serve<WebSocketData>({
 						const id = dataView.getUint16(offset + 26, true)
 						offset += 28
 
+						// 直接加入 Set
+						ws.data.tokenUsageCount.add(token)
+
 						let result = paintboard.validateToken(token, uid)
 						if (result === PaintResultCode.SUCCESS) {
 							const success = paintboard.setPixel(x, y, color)
@@ -447,13 +451,29 @@ setInterval(() => {
 
 // 添加吞吐量监控
 setInterval(() => {
+	// 获取所有连接的 token 统计
+	const connectionStats = Array.from(ipConnections.entries())
+		.flatMap(([ip, connections]) =>
+			connections.map(ws => ({
+				ip: ws.data.ip,
+				uniqueTokens: ws.data.tokenUsageCount.size
+			}))
+		)
+		.sort((a, b) => b.uniqueTokens - a.uniqueTokens)
+
+	// 获取前5名
+	const top5 = connectionStats.slice(0, 5)
+
 	logger.info(
 		`WebSocket Traffic - Received: ${globalPacketsReceived} packets (${(
 			globalPacketsReceived / 5
 		).toFixed(2)} /s), Sent: ${globalPacketsSent} packets (${(
 			globalPacketsSent / 5
-		).toFixed(2)} /s)`
+		).toFixed(2)} /s)\nTop 5 Token Users:\n${top5
+			.map(stat => `  ${stat.ip}: ${stat.uniqueTokens} tokens`)
+			.join('\n')}`
 	)
+
 	// 重置计数器
 	globalPacketsReceived = 0
 	globalPacketsSent = 0
