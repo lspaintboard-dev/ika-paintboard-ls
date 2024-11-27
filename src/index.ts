@@ -33,7 +33,8 @@ const configSchema = z.strictObject({
 	cert: z.string().optional(),
 	maxWebSocketPerIP: z.number().min(0).default(0),
 	banDuration: z.number().min(0).default(60000),
-	ticksPerSecond: z.number().min(1).default(128)
+	ticksPerSecond: z.number().min(1).default(128),
+	maxPacketPerSecond: z.number().min(1).default(128)
 })
 
 let config: z.infer<typeof configSchema>
@@ -268,6 +269,7 @@ const server = Bun.serve<WebSocketData>({
 			ws.data.lastPing = Date.now()
 			ws.data.waitingPong = false
 			ws.data.packetsReceived = 0
+			ws.data.lastPacketCountReset = Date.now()
 
 			// 为每个连接创建独立的 ping 定时器
 			ws.data.pingInterval = setInterval(() => {
@@ -303,8 +305,25 @@ const server = Bun.serve<WebSocketData>({
 			logger.debug(`WebSocket closed: ${webSocketConnectionCount} clients`)
 		},
 		message(ws, msg: Buffer) {
-			// 更新接收计数
+			const now = Date.now()
+
+			// 检查是否需要重置计数
+			if (now - ws.data.lastPacketCountReset >= 1000) {
+				ws.data.packetsReceived = 0
+				ws.data.lastPacketCountReset = now
+			}
+
+			// 更新接收计数并检查限制
 			ws.data.packetsReceived++
+			if (ws.data.packetsReceived > config.maxPacketPerSecond) {
+				logger.warn(
+					`Client ${ws.data.ip} exceeded packet rate limit, closing connection`
+				)
+				ws.close()
+				return
+			}
+
+			// 原有的消息处理逻辑
 			globalPacketsReceived++
 
 			// 使用 DataView 解析二进制数据
