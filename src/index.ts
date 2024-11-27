@@ -264,11 +264,29 @@ const server = Bun.serve<WebSocketData>({
 			)
 			ws.subscribe('paint')
 
-			// 初始化最后响应时间
+			// 初始化最后响应时间和 ping 标记
 			ws.data.lastPing = Date.now()
+			ws.data.waitingPong = false
 			ws.data.packetsReceived = 0
+
+			// 为每个连接创建独立的 ping 定时器
+			ws.data.pingInterval = setInterval(() => {
+				if (ws.data.waitingPong) {
+					// 如果上一个 ping 还没收到 pong 响应，说明连接已超时
+					logger.debug(`WebSocket ping timeout for ${ip}`)
+					ws.close()
+					return
+				}
+				ws.data.waitingPong = true
+				ws.data.sendBuffer.write(new Uint8Array([0xfc])) // S2C ping
+			}, 20000)
 		},
 		close(ws) {
+			// 清理 ping 定时器
+			if (ws.data.pingInterval) {
+				clearInterval(ws.data.pingInterval)
+			}
+
 			ws.data.sendBuffer.flush()
 			const ip = ws.data.ip
 			const connections = ipConnections.get(ip)
@@ -300,7 +318,8 @@ const server = Bun.serve<WebSocketData>({
 
 				switch (type) {
 					case 0xfb: // C2S pong
-						// 更新最后响应时间
+						// 更新 pong 响应状态
+						ws.data.waitingPong = false
 						ws.data.lastPing = Date.now()
 						break
 
@@ -402,9 +421,9 @@ setInterval(() => {
 	logger.info(
 		`WebSocket Traffic - Received: ${globalPacketsReceived} packets (${(
 			globalPacketsReceived / 5
-		).toFixed(2)}/s), Sent: ${globalPacketsSent} packets (${(
+		).toFixed(2)} /s), Sent: ${globalPacketsSent} packets (${(
 			globalPacketsSent / 5
-		).toFixed(2)}/s)`
+		).toFixed(2)} /s)`
 	)
 	// 重置计数器
 	globalPacketsReceived = 0
@@ -501,21 +520,5 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 		)
 	}
 }
-
-// 定期发送 ping 包并检查超时
-setInterval(() => {
-	server.publish('paint', new Uint8Array([0xfc])) // S2C ping
-
-	// 检查所有连接的ping超时
-	for (const [ip, connections] of ipConnections) {
-		for (const ws of connections) {
-			const timeSincelastPing = Date.now() - ws.data.lastPing
-			if (timeSincelastPing > 5000) {
-				logger.debug(`WebSocket ping timeout for ${ip}`)
-				ws.close()
-			}
-		}
-	}
-}, 5000)
 
 logger.info(`Server started on port ${config.port}`)

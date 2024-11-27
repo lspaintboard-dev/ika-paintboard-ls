@@ -39,6 +39,8 @@ export type WebSocketData = {
 	ip: string
 	packetsReceived: number
 	sendBuffer: Bun.ArrayBufferSink
+	pingInterval?: Timer // setInterval 返回值的类型
+	waitingPong: boolean // 是否正在等待 pong 响应
 }
 
 export type ColorUpdateListener = (batchUpdate: Uint8Array) => void
