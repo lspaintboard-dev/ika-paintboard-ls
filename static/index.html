@@ -111,7 +111,7 @@
                         参与方式: 在 LuoguUid 中输入您的洛谷 uid, 新建一个剪贴板并<b>只输入</b> LSPaintBoard-2025 后公开保存。将您的剪贴板
                         Url 中最后一串八位字符输入到 LuoguPaste 中后点击获取 Token。如果以后您想绘画输入 Token 与 uid 即可。当您绘画时会自动保存您的 uid 及 Token 至浏览器。
                     </p>
-                    <p>禁止绘制违反法律、社会公德的图形，否则将被清除且上报网警。请大家组团时不要分享自己的 cookie，而是使用分享 Token 这种更安全的方式。分享 cookie
+                    <p>禁止绘制违反法律、社会公德的���形，否则将被清除且上报网警。请大家组团时不要分享自己的 cookie，而是使用分享 Token 这种更安全的方式。分享 cookie
                         等同于分享账号，他人可以使用您的 cookie 在洛谷以您的名义进行任何操作。</p>
                     <p>本页面部分来源于<a href="https://www.luogu.com.cn/paintboard" target="_blank">官方绘板页面</a>。</p>
                     
@@ -264,10 +264,10 @@
                         ws.send(new Uint8Array([0xfb])); // pong
                         break;
                     }
-                    case 0xff: { // paint_result 包长度为 4 字节
-                        const id = dataView.getUint16(offset, true)
-                        const code = dataView.getUint8(offset + 2)
-                        offset += 3
+                    case 0xff: { // paint_result 包长度为 6 字节
+                        const id = dataView.getUint32(offset, true)
+                        const code = dataView.getUint8(offset + 4)
+                        offset += 5
                         
                         const cb = paintCb.get(id)
                         if(cb) {
@@ -310,7 +310,7 @@
         const b = parseInt(nowColor.slice(5,7), 16);
 
         // Prepare paint request
-        const id = (paintId++) % 65536;
+        const id = (paintId++) % 4294967296; // 改为32位最大值
         const tokenBytes = new Uint8Array(16);
         token.replace(/-/g,'').match(/.{2}/g).map((byte, i) => 
             tokenBytes[i] = parseInt(byte, 16));
@@ -324,7 +324,10 @@
             Math.floor(uid/256)%256,
             uid%256,
             ...tokenBytes,           // token
-            id%256, Math.floor(id/256) // id
+            id & 255,                // id (32位)
+            (id >> 8) & 255, 
+            (id >> 16) & 255,
+            (id >> 24) & 255
         ]);
 
         ws.send(paintData);

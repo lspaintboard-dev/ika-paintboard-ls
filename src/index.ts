@@ -354,7 +354,7 @@ const server = Bun.serve<WebSocketData>({
 						break
 
 					case 0xfe: {
-						// C2S paint (29字节)
+						// C2S paint (31字节，因为ID从16位变为32位，增加2字节)
 						const x = dataView.getUint16(offset, true)
 						const y = dataView.getUint16(offset + 2, true)
 						const color = {
@@ -377,8 +377,8 @@ const server = Bun.serve<WebSocketData>({
 							Buffer.from(tokenBytes.slice(10, 16)).toString('hex')
 						].join('-')
 
-						const id = dataView.getUint16(offset + 26, true)
-						offset += 28
+						const id = dataView.getUint32(offset + 26, true)
+						offset += 30
 
 						// 直接加入 Set
 						ws.data.tokenUsageCount.add(token)
@@ -391,7 +391,14 @@ const server = Bun.serve<WebSocketData>({
 							}
 						}
 
-						const response = new Uint8Array([0xff, id & 255, id >> 8, result])
+						const response = new Uint8Array([
+							0xff,
+							id & 255,
+							(id >> 8) & 255,
+							(id >> 16) & 255,
+							(id >> 24) & 255,
+							result
+						])
 						ws.data.sendBuffer.write(response) // S2C paint_result
 						break
 					}
