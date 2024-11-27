@@ -316,10 +316,20 @@ const server = Bun.serve<WebSocketData>({
 			// 更新接收计数并检查限制
 			ws.data.packetsReceived++
 			if (ws.data.packetsReceived > config.maxPacketPerSecond) {
+				const ip = ws.data.ip
 				logger.warn(
-					`Client ${ws.data.ip} exceeded packet rate limit, closing connection`
+					`Client ${ip} exceeded packet rate limit (${ws.data.packetsReceived} > ${config.maxPacketPerSecond}), banning for 15s`
 				)
-				ws.close()
+				// 设置15秒封禁
+				bannedIPs.set(ip, Date.now() + 15000)
+				// 断开该 IP 的所有连接
+				const connections = ipConnections.get(ip)
+				if (connections) {
+					for (const conn of connections) {
+						conn.close()
+					}
+					ipConnections.delete(ip)
+				}
 				return
 			}
 
