@@ -111,7 +111,7 @@
                         参与方式: 在 LuoguUid 中输入您的洛谷 uid, 新建一个剪贴板并<b>只输入</b> LSPaintBoard-2025 后公开保存。将您的剪贴板
                         Url 中最后一串八位字符输入到 LuoguPaste 中后点击获取 Token。如果以后您想绘画输入 Token 与 uid 即可。当您绘画时会自动保存您的 uid 及 Token 至浏览器。
                     </p>
-                    <p>禁止绘制违反法律、社会公德的���形，否则将被清除且上报网警。请大家组团时不要分享自己的 cookie，而是使用分享 Token 这种更安全的方式。分享 cookie
+                    <p>禁止绘制违反法律、社会公德的图形，否则将被清除且上报网警。请大家组团时不要分享自己的 cookie，而是使用分享 Token 这种更安全的方式。分享 cookie
                         等同于分享账号，他人可以使用您的 cookie 在洛谷以您的名义进行任何操作。</p>
                     <p>本页面部分来源于<a href="https://www.luogu.com.cn/paintboard" target="_blank">官方绘板页面</a>。</p>
                     
@@ -163,7 +163,7 @@
         var ctx = c.getContext("2d");
         ctx.fillStyle = color;
         if(!t) myarr[y][x] = color;
-        ctx.fillRect(x * 5, y * 5, 5, 5);
+        ctx.fillRect(x * scale, y * scale, scale, scale);
     }
 
     var myarr = [];
@@ -223,7 +223,7 @@
     let paintCb = new Map();
     
     function connectWs() {
-        ws = new WebSocket('/api/paintboard/ws');
+        ws = new WebSocket(location.protocol.replace('http', 'ws') + '//' + location.host + '/api/paintboard/ws');
         ws.binaryType = "arraybuffer";
         
         ws.onopen = function() {
@@ -235,44 +235,41 @@
         };
 
         ws.onmessage = function(event) {
-            // 使用 DataView 来处理二进制数据
-            const buffer = event.data
-            const dataView = new DataView(buffer)
-            let offset = 0
+            const buffer = event.data;
+            const dataView = new DataView(buffer);
+            let offset = 0;
 
-            // 循环处理所有包
             while (offset < buffer.byteLength) {
-                const type = dataView.getUint8(offset)
-                offset += 1
-
+                const type = dataView.getUint8(offset++);
+                
                 switch(type) {
-                    case 0xfa: { // set_color 包长度为 8 字节
-                        const x = dataView.getUint16(offset, true) // true 表示小端序
-                        const y = dataView.getUint16(offset + 2, true)
-                        const colorR = dataView.getUint8(offset + 4)
-                        const colorG = dataView.getUint8(offset + 5)
-                        const colorB = dataView.getUint8(offset + 6)
-                        offset += 7
-
-                        update(y, x, "#" + 
-                            colorR.toString(16).padStart(2,'0') + 
-                            colorG.toString(16).padStart(2,'0') + 
-                            colorB.toString(16).padStart(2,'0'));
+                    case 0xfa: { // set_color
+                        const x = dataView.getUint16(offset, true);
+                        const y = dataView.getUint16(offset + 2, true);
+                        const r = dataView.getUint8(offset + 4);
+                        const g = dataView.getUint8(offset + 5);
+                        const b = dataView.getUint8(offset + 6);
+                        offset += 7;
+                        
+                        const color = '#' + 
+                            r.toString(16).padStart(2,'0') + 
+                            g.toString(16).padStart(2,'0') + 
+                            b.toString(16).padStart(2,'0');
+                        update(y, x, color);
                         break;
                     }
-                    case 0xfc: { // ping 包长度为 1 字节
+                    case 0xfc: // ping
                         ws.send(new Uint8Array([0xfb])); // pong
                         break;
-                    }
-                    case 0xff: { // paint_result 包长度为 6 字节
-                        const id = dataView.getUint32(offset, true)
-                        const code = dataView.getUint8(offset + 4)
-                        offset += 5
+                    case 0xff: { // paint_result
+                        const id = dataView.getUint32(offset, true);
+                        const code = dataView.getUint8(offset + 4);
+                        offset += 5;
                         
-                        const cb = paintCb.get(id)
+                        const cb = paintCb.get(id);
                         if(cb) {
-                            cb(code)
-                            paintCb.delete(id)
+                            cb(code);
+                            paintCb.delete(id);
                         }
                         break;
                     }
@@ -310,22 +307,22 @@
         const b = parseInt(nowColor.slice(5,7), 16);
 
         // Prepare paint request
-        const id = (paintId++) % 4294967296; // 改为32位最大值
+        const id = (paintId++) & 0xFFFFFFFF; // 32位循环
         const tokenBytes = new Uint8Array(16);
         token.replace(/-/g,'').match(/.{2}/g).map((byte, i) => 
             tokenBytes[i] = parseInt(byte, 16));
 
         const paintData = new Uint8Array([
-            0xfe,                    // type
-            nowX % 256, Math.floor(nowX/256),  // x
-            nowY % 256, Math.floor(nowY/256),  // y
-            r, g, b,                 // color
-            Math.floor(uid/65536),   // uid
-            Math.floor(uid/256)%256,
-            uid%256,
-            ...tokenBytes,           // token
-            id & 255,                // id (32位)
-            (id >> 8) & 255, 
+            0xfe,                           // type
+            nowX & 255, (nowX >> 8) & 255,       // x (LE)
+            nowY & 255, (nowY >> 8) & 255,       // y (LE)
+            r, g, b,                       // color
+            uid & 255,                     // uid (LE) 
+            (uid >> 8) & 255,
+            (uid >> 16) & 255,
+            ...tokenBytes,                 // token
+            id & 255,                      // id (LE)
+            (id >> 8) & 255,
             (id >> 16) & 255,
             (id >> 24) & 255
         ]);
@@ -359,8 +356,8 @@
     });
 
     $('#mycanvas').bind('mousemove', function() {
-        var x = parseInt(event.offsetX / scale);
-        var y = parseInt(event.offsetY / scale);
+        var x = (event.offsetX / scale) | 0; // 使用位运算取整
+        var y = (event.offsetY / scale) | 0;
 
         x = Math.min(x, W-1);
         y = Math.min(y, H-1);
@@ -491,7 +488,12 @@
                 const byteArray = new Uint8Array(arrayBuffer);
                 for(let y=0;y<600;y++) {
                     for(let x=0;x<1000;x++) {
-                        update(y,x,'#' + ('00000'+(byteArray[y*1000*3+x*3]*0x10000+byteArray[y*1000*3+x*3+1]*0x100+byteArray[y*1000*3+x*3+2]).toString(16)).substr(-6));
+                        const idx = (y * 1000 + x) * 3;
+                        update(y,x,'#' + 
+                            byteArray[idx].toString(16).padStart(2,'0') + 
+                            byteArray[idx+1].toString(16).padStart(2,'0') + 
+                            byteArray[idx+2].toString(16).padStart(2,'0')
+                        );
                     }
                 }
             }

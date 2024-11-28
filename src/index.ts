@@ -354,8 +354,8 @@ const server = Bun.serve<WebSocketData>({
 						break
 
 					case 0xfe: {
-						// C2S paint (31字节，因为ID从16位变为32位，增加2字节)
-						const x = dataView.getUint16(offset, true)
+						// C2S paint (31字节)
+						const x = dataView.getUint16(offset, true) // 添加 true 表示小端序
 						const y = dataView.getUint16(offset + 2, true)
 						const color = {
 							r: dataView.getUint8(offset + 4),
@@ -363,9 +363,9 @@ const server = Bun.serve<WebSocketData>({
 							b: dataView.getUint8(offset + 6)
 						}
 						const uid =
-							dataView.getUint8(offset + 7) * 65536 +
+							dataView.getUint8(offset + 7) +
 							dataView.getUint8(offset + 8) * 256 +
-							dataView.getUint8(offset + 9)
+							dataView.getUint8(offset + 9) * 65536
 
 						// 处理 token (16字节)
 						const tokenBytes = new Uint8Array(msg.buffer, offset + 10, 16)

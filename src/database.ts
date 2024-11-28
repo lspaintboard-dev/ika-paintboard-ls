@@ -7,6 +7,8 @@ export class DBManager {
 	private loadBoardStmt: ReturnType<Database['prepare']>
 	private saveTokenStmt: ReturnType<Database['prepare']>
 	private loadTokensStmt: ReturnType<Database['prepare']>
+	private deleteTokensByUidStmt: ReturnType<Database['prepare']>
+	private deleteOldTokensStmt: ReturnType<Database['prepare']>
 
 	constructor() {
 		this.db = new Database('data.db')
@@ -33,6 +35,12 @@ export class DBManager {
 			'INSERT OR REPLACE INTO tokens (token, uid) VALUES (?, ?)'
 		)
 		this.loadTokensStmt = this.db.prepare('SELECT token, uid FROM tokens')
+		this.deleteTokensByUidStmt = this.db.prepare(
+			'DELETE FROM tokens WHERE uid = ?'
+		)
+		this.deleteOldTokensStmt = this.db.prepare(
+			'DELETE FROM tokens WHERE uid = ? AND token != ?'
+		)
 
 		// 改为异步初始化
 		this.init()
@@ -40,6 +48,8 @@ export class DBManager {
 
 	private async init() {
 		await this.migrateOldTokens()
+		// 初始化时执行一次清理
+		this.cleanupDuplicateTokens()
 	}
 
 	private async migrateOldTokens() {
@@ -114,7 +124,11 @@ export class DBManager {
 	}
 
 	public saveToken(token: Token) {
-		this.saveTokenStmt.run(token.token, token.uid)
+		// 在保存新token之前，删除该UID的所有其他token
+		this.db.transaction(() => {
+			this.deleteOldTokensStmt.run(token.uid, token.token)
+			this.saveTokenStmt.run(token.token, token.uid)
+		})()
 	}
 
 	public loadTokens(): Map<string, Token> {
@@ -124,14 +138,41 @@ export class DBManager {
 			uid: number
 		}[]
 
+		// 创建一个临时Map来存储每个UID最后一个Token
+		const uidLastToken = new Map<number, Token>()
+
 		for (const row of rows) {
-			tokens.set(row.token, {
+			uidLastToken.set(row.uid, {
 				token: row.token,
 				uid: row.uid
 			})
 		}
 
+		// 只保留每个UID的最后一个Token
+		for (const token of uidLastToken.values()) {
+			tokens.set(token.token, token)
+		}
+
 		return tokens
+	}
+
+	public deleteTokensByUid(uid: number) {
+		this.deleteTokensByUidStmt.run(uid)
+	}
+
+	public cleanupDuplicateTokens() {
+		// 清理数据库中的重复UID token
+		this.db.exec(`
+            WITH latest_tokens AS (
+                SELECT uid, MAX(token) as token
+                FROM tokens
+                GROUP BY uid
+            )
+            DELETE FROM tokens 
+            WHERE (uid, token) NOT IN (
+                SELECT uid, token FROM latest_tokens
+            )
+        `)
 	}
 
 	public close() {

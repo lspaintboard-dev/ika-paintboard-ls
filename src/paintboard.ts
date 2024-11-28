@@ -148,12 +148,20 @@ export class PaintBoardManager {
 	): Promise<{ token: string | null; error?: string }> {
 		const validation = await this.validatePaste(uid, paste)
 		if (validation.success) {
+			// 删除该 UID 的所有旧 Token
+			for (const [existingToken, info] of this.tokens.entries()) {
+				if (info.uid === uid) {
+					this.tokens.delete(existingToken)
+				}
+			}
+
 			const token = randomUUID()
 			const tokenInfo = {
 				uid,
 				token
 			}
 			this.tokens.set(token, tokenInfo)
+			this.db?.deleteTokensByUid(uid) // 在数据库中也删除旧 Token
 			this.db?.saveToken(tokenInfo)
 			return { token }
 		}
