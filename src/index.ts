@@ -337,77 +337,82 @@ const server = Bun.serve<WebSocketData>({
 			// 原有的消息处理逻辑
 			globalPacketsReceived++
 
-			// 使用 DataView 解析二进制数据
-			const dataView = new DataView(msg.buffer)
-			let offset = 0
+			try {
+				// 使用 DataView 解析二进制数据
+				const dataView = new DataView(msg.buffer)
+				let offset = 0
 
-			// 循环处理所有包
-			while (offset < msg.length) {
-				const type = dataView.getUint8(offset)
-				offset += 1
+				// 循环处理所有包
+				while (offset < msg.length) {
+					const type = dataView.getUint8(offset)
+					offset += 1
 
-				switch (type) {
-					case 0xfb: // C2S pong
-						// 更新 pong 响应状态
-						ws.data.waitingPong = false
-						ws.data.lastPing = Date.now()
-						break
+					switch (type) {
+						case 0xfb: // C2S pong
+							// 更新 pong 响应状态
+							ws.data.waitingPong = false
+							ws.data.lastPing = Date.now()
+							break
 
-					case 0xfe: {
-						// C2S paint (31字节)
-						const x = dataView.getUint16(offset, true) // 添加 true 表示小端序
-						const y = dataView.getUint16(offset + 2, true)
-						const color = {
-							r: dataView.getUint8(offset + 4),
-							g: dataView.getUint8(offset + 5),
-							b: dataView.getUint8(offset + 6)
-						}
-						const uid =
-							dataView.getUint8(offset + 7) +
-							dataView.getUint8(offset + 8) * 256 +
-							dataView.getUint8(offset + 9) * 65536
-
-						// 处理 token (16字节)
-						const tokenBytes = new Uint8Array(msg.buffer, offset + 10, 16)
-						const token = [
-							Buffer.from(tokenBytes.slice(0, 4)).toString('hex'),
-							Buffer.from(tokenBytes.slice(4, 6)).toString('hex'),
-							Buffer.from(tokenBytes.slice(6, 8)).toString('hex'),
-							Buffer.from(tokenBytes.slice(8, 10)).toString('hex'),
-							Buffer.from(tokenBytes.slice(10, 16)).toString('hex')
-						].join('-')
-
-						const id = dataView.getUint32(offset + 26, true)
-						offset += 30
-
-						// 直接加入 Set
-						ws.data.tokenUsageCount.add(token)
-
-						let result = paintboard.validateToken(token, uid)
-						if (result === PaintResultCode.SUCCESS) {
-							const success = paintboard.setPixel(x, y, color)
-							if (!success) {
-								result = PaintResultCode.BAD_FORMAT
+						case 0xfe: {
+							// C2S paint (31字节)
+							const x = dataView.getUint16(offset, true) // 添加 true 表示小端序
+							const y = dataView.getUint16(offset + 2, true)
+							const color = {
+								r: dataView.getUint8(offset + 4),
+								g: dataView.getUint8(offset + 5),
+								b: dataView.getUint8(offset + 6)
 							}
+							const uid =
+								dataView.getUint8(offset + 7) +
+								dataView.getUint8(offset + 8) * 256 +
+								dataView.getUint8(offset + 9) * 65536
+
+							// 处理 token (16字节)
+							const tokenBytes = new Uint8Array(msg.buffer, offset + 10, 16)
+							const token = [
+								Buffer.from(tokenBytes.slice(0, 4)).toString('hex'),
+								Buffer.from(tokenBytes.slice(4, 6)).toString('hex'),
+								Buffer.from(tokenBytes.slice(6, 8)).toString('hex'),
+								Buffer.from(tokenBytes.slice(8, 10)).toString('hex'),
+								Buffer.from(tokenBytes.slice(10, 16)).toString('hex')
+							].join('-')
+
+							const id = dataView.getUint32(offset + 26, true)
+							offset += 30
+
+							// 直接加入 Set
+							ws.data.tokenUsageCount.add(token)
+
+							let result = paintboard.validateToken(token, uid)
+							if (result === PaintResultCode.SUCCESS) {
+								const success = paintboard.setPixel(x, y, color)
+								if (!success) {
+									result = PaintResultCode.BAD_FORMAT
+								}
+							}
+
+							const response = new Uint8Array([
+								0xff,
+								id & 255,
+								(id >> 8) & 255,
+								(id >> 16) & 255,
+								(id >> 24) & 255,
+								result
+							])
+							ws.data.sendBuffer.write(response) // S2C paint_result
+							break
 						}
 
-						const response = new Uint8Array([
-							0xff,
-							id & 255,
-							(id >> 8) & 255,
-							(id >> 16) & 255,
-							(id >> 24) & 255,
-							result
-						])
-						ws.data.sendBuffer.write(response) // S2C paint_result
-						break
+						default:
+							logger.warn(`Unknown packet type: ${type}`)
+							ws.close()
+							return
 					}
-
-					default:
-						logger.warn(`Unknown packet type: ${type}`)
-						ws.close()
-						return
 				}
+			} catch (e) {
+				logger.error(e, 'Error processing message, terminating connection')
+				ws.close()
 			}
 		}
 	},
