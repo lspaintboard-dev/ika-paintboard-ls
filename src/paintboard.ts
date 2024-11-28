@@ -21,7 +21,8 @@ export class PaintBoardManager {
 	private autoSaveInterval?: Timer
 	private lastPaintTime: Map<string, number> = new Map()
 	private colorUpdateListener?: ColorUpdateListener
-	private dirtyPixels: Set<number> = new Set()
+	private dirtyFlags: boolean[] = []
+	private dirtyList: number[] = []
 
 	constructor(
 		width: number,
@@ -60,6 +61,8 @@ export class PaintBoardManager {
 
 		this.paintDelay = paintDelay
 		this.validationPaste = validationPaste
+		this.dirtyFlags = new Array(width * height).fill(false)
+		this.dirtyList = []
 	}
 
 	private initializeBoard(width: number, height: number) {
@@ -101,24 +104,32 @@ export class PaintBoardManager {
 
 		this.board.pixels[y][x] = color
 
-		// 将坐标转换为唯一标识并加入脏像素集合
+		// 将坐标转换为唯一标识
 		const pixelId = y * this.board.width + x
-		this.dirtyPixels.add(pixelId)
+
+		// 如果该像素未被标记为脏，则加入脏像素列表并设置标记
+		if (!this.dirtyFlags[pixelId]) {
+			this.dirtyFlags[pixelId] = true
+			this.dirtyList.push(pixelId)
+		}
 
 		return true
 	}
 
 	public flushUpdates() {
-		if (this.dirtyPixels.size > 0 && this.colorUpdateListener) {
+		if (this.dirtyList.length > 0 && this.colorUpdateListener) {
 			const sink = new Bun.ArrayBufferSink()
 			sink.start({
 				asUint8Array: true
 			})
 
-			for (const pixelId of this.dirtyPixels) {
+			for (const pixelId of this.dirtyList) {
 				const y = Math.floor(pixelId / this.board.width)
 				const x = pixelId % this.board.width
 				const color = this.board.pixels[y][x]
+
+				// 清除标记
+				this.dirtyFlags[pixelId] = false
 
 				// 按照协议格式构造单个像素更新包
 				sink.write(
@@ -137,9 +148,10 @@ export class PaintBoardManager {
 
 			// 发送合并后的更新
 			this.colorUpdateListener(sink.end() as Uint8Array)
-		}
 
-		this.dirtyPixels.clear()
+			// 清空脏像素列表
+			this.dirtyList.length = 0
+		}
 	}
 
 	public async generateToken(

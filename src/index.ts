@@ -306,6 +306,8 @@ const server = Bun.serve<WebSocketData>({
 			logger.debug(`WebSocket closed: ${webSocketConnectionCount} clients`)
 		},
 		message(ws, msg: Buffer) {
+			if (ws.readyState !== 1) return
+
 			const now = Date.now()
 
 			// 检查是否需要重置计数
