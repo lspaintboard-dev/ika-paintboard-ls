@@ -22,7 +22,9 @@ const logger = pino({
 })
 globalThis.logger = logger
 
-const pool = workerpool.pool()
+const pool = workerpool.pool({
+	workerType: 'web'
+})
 globalThis.pool = pool
 
 const configSchema = z.strictObject({
@@ -191,13 +193,24 @@ const server = Bun.serve<WebSocketData>({
 		// HTTP API 处理
 		if (url.pathname === '/api/paintboard/getboard') {
 			const startTime = Date.now()
-			const buffer = paintboard.getBoardBuffer()
-
-			const compressed = Bun.gzipSync(new Uint8Array(buffer))
+			const [compressed, bufferSize] = await pool.exec<
+				// 这脑残 WorkerPool 没有原生类型支持
+				(
+					arg0: SharedArrayBuffer,
+					arg1: number,
+					arg2: number
+				) => [Uint8Array, number]
+			>(
+				(pixels: SharedArrayBuffer, width: number, height: number) => {
+					const gzipped = Bun.gzipSync(new Uint8Array(pixels))
+					return [gzipped, width * height * 3]
+				},
+				[paintboard.getSharedArrayBuffer(), config.width, config.height]
+			)
 			logger.debug(
-				`getboard: ${Date.now() - startTime}ms (gzip) ${buffer.length} -> ${
+				`getboard: ${Date.now() - startTime}ms (gzip) ${bufferSize} -> ${
 					compressed.length
-				} (${(compressed.length / buffer.length).toFixed(2)}x)`
+				} (${(compressed.length / bufferSize).toFixed(2)}x)`
 			)
 			return new Response(compressed, {
 				headers: {
@@ -210,13 +223,26 @@ const server = Bun.serve<WebSocketData>({
 
 		if (url.pathname === '/api/paintboard/getimage') {
 			const startTime = Date.now()
-			const buffer = await paintboard.getBoardBuffer()
-			const compressed = await bufferToWebP(buffer, config.width, config.height)
+			const [compressed, bufferSize] = await pool.exec<
+				(
+					arg0: SharedArrayBuffer,
+					arg1: number,
+					arg2: number
+				) => Promise<[Buffer, number]>
+			>(
+				async (pixels: SharedArrayBuffer, width: number, height: number) => {
+					return [
+						await bufferToWebP(Buffer.from(pixels), width, height),
+						width * height * 3
+					]
+				},
+				[paintboard.getSharedArrayBuffer(), config.width, config.height]
+			)
 			logger.debug(
-				`getboard: ${Date.now() - startTime}ms (webp-lossless) ${
-					buffer.length
-				} -> ${compressed.length} (${(
-					compressed.length / buffer.length
+				`getimage: ${
+					Date.now() - startTime
+				}ms (webp-lossless) ${bufferSize} -> ${compressed.length} (${(
+					compressed.length / bufferSize
 				).toFixed(2)}x)`
 			)
 			return new Response(compressed, {

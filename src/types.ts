@@ -9,7 +9,7 @@ export type Color = {
 export type PaintBoard = {
 	width: number
 	height: number
-	pixels: Color[][]
+	pixels: SharedArrayBuffer
 }
 
 export type Token = {

@@ -9,11 +9,8 @@ import { randomUUID } from 'crypto'
 import { DBManager } from './database'
 
 export class PaintBoardManager {
-	private board: PaintBoard = {
-		width: 0,
-		height: 0,
-		pixels: []
-	}
+	private board: PaintBoard
+	private pixelView: Uint8Array // 用于访问 SharedArrayBuffer 的视图
 	private tokens: Map<string, Token> = new Map()
 	private paintDelay: number
 	private validationPaste: string
@@ -32,6 +29,16 @@ export class PaintBoardManager {
 		useDB: boolean,
 		clearBoard: boolean
 	) {
+		// 初始化 SharedArrayBuffer
+		const bufferSize = width * height * 3 // 每个像素 3 字节(RGB)
+		const buffer = new SharedArrayBuffer(bufferSize)
+		this.board = {
+			width,
+			height,
+			pixels: buffer
+		}
+		this.pixelView = new Uint8Array(this.board.pixels)
+
 		if (useDB) {
 			this.db = new DBManager()
 
@@ -43,20 +50,23 @@ export class PaintBoardManager {
 			if (!clearBoard) {
 				const saved = this.db.loadBoard()
 				if (saved) {
-					this.board = saved
+					// 将加载的数据复制到 SharedArrayBuffer
+					this.board.width = saved.width
+					this.board.height = saved.height
+					new Uint8Array(this.board.pixels).set(saved.pixels)
 					logger.info('Loaded board state from database')
 				} else {
-					this.initializeBoard(width, height)
+					this.initializeBoard()
 					logger.info('Initialized new board (no data in database)')
 				}
 			} else {
-				this.initializeBoard(width, height)
+				this.initializeBoard()
 				logger.info('Cleared board as requested')
 			}
 
 			this.autoSaveInterval = setInterval(() => this.saveToDb(), 5 * 60 * 1000)
 		} else {
-			this.initializeBoard(width, height)
+			this.initializeBoard()
 		}
 
 		this.paintDelay = paintDelay
@@ -65,32 +75,21 @@ export class PaintBoardManager {
 		this.dirtyList = []
 	}
 
-	private initializeBoard(width: number, height: number) {
-		this.board = {
-			width,
-			height,
-			pixels: Array(height)
-				.fill(0)
-				.map(() =>
-					Array(width)
-						.fill(0)
-						.map(() => ({ r: 170, g: 170, b: 170 }))
-				)
+	private initializeBoard() {
+		// 用灰色填充 SharedArrayBuffer
+		const grayValue = 170
+		for (let i = 0; i < this.pixelView.length; i++) {
+			this.pixelView[i] = grayValue
 		}
 	}
 
 	public getBoardBuffer(): Buffer {
-		const buffer = new Uint8Array(this.board.width * this.board.height * 3)
-		for (let y = 0; y < this.board.height; y++) {
-			for (let x = 0; x < this.board.width; x++) {
-				const pixel = this.board.pixels[y][x]
-				const idx = (y * this.board.width + x) * 3
-				buffer[idx] = pixel.r
-				buffer[idx + 1] = pixel.g
-				buffer[idx + 2] = pixel.b
-			}
-		}
-		return Buffer.from(buffer)
+		// 直接返回 SharedArrayBuffer 的视图
+		return Buffer.from(this.pixelView)
+	}
+
+	public getSharedArrayBuffer(): SharedArrayBuffer {
+		return this.board.pixels
 	}
 
 	public onColorUpdate(listener: ColorUpdateListener) {
@@ -102,7 +101,10 @@ export class PaintBoardManager {
 			return false
 		}
 
-		this.board.pixels[y][x] = color
+		const idx = (y * this.board.width + x) * 3
+		this.pixelView[idx] = color.r
+		this.pixelView[idx + 1] = color.g
+		this.pixelView[idx + 2] = color.b
 
 		// 将坐标转换为唯一标识
 		const pixelId = y * this.board.width + x
@@ -126,7 +128,11 @@ export class PaintBoardManager {
 			for (const pixelId of this.dirtyList) {
 				const y = Math.floor(pixelId / this.board.width)
 				const x = pixelId % this.board.width
-				const color = this.board.pixels[y][x]
+				const color = {
+					r: this.pixelView[(y * this.board.width + x) * 3],
+					g: this.pixelView[(y * this.board.width + x) * 3 + 1],
+					b: this.pixelView[(y * this.board.width + x) * 3 + 2]
+				}
 
 				// 清除标记
 				this.dirtyFlags[pixelId] = false
@@ -182,7 +188,7 @@ export class PaintBoardManager {
 
 	private saveToDb() {
 		if (this.db) {
-			this.db.saveBoard(this.board.pixels, this.board.width, this.board.height)
+			this.db.saveBoard(this.pixelView, this.board.width, this.board.height)
 			logger.info('Board state saved to database')
 		}
 	}

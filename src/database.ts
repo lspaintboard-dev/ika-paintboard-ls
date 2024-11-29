@@ -80,47 +80,25 @@ export class DBManager {
 		}
 	}
 
-	public saveBoard(pixels: Color[][], width: number, height: number) {
-		const buffer = new Uint8Array(width * height * 3)
-		for (let y = 0; y < height; y++) {
-			for (let x = 0; x < width; x++) {
-				const pixel = pixels[y][x]
-				const idx = (y * width + x) * 3
-				buffer[idx] = pixel.r
-				buffer[idx + 1] = pixel.g
-				buffer[idx + 2] = pixel.b
-			}
-		}
-		this.saveBoardStmt.run(width, height, buffer)
+	public saveBoard(pixels: Uint8Array, width: number, height: number) {
+		this.saveBoardStmt.run(width, height, pixels)
 	}
 
 	public loadBoard(): {
-		pixels: Color[][]
 		width: number
 		height: number
+		pixels: Uint8Array
 	} | null {
 		const row = this.loadBoardStmt.get() as
 			| { width: number; height: number; pixels: Buffer }
 			| undefined
 		if (!row) return null
 
-		const { width, height, pixels } = row
-		const result: Color[][] = Array(height)
-			.fill(0)
-			.map(() => Array(width).fill({ r: 170, g: 170, b: 170 }))
-
-		for (let y = 0; y < height; y++) {
-			for (let x = 0; x < width; x++) {
-				const idx = (y * width + x) * 3
-				result[y][x] = {
-					r: pixels[idx],
-					g: pixels[idx + 1],
-					b: pixels[idx + 2]
-				}
-			}
+		return {
+			width: row.width,
+			height: row.height,
+			pixels: new Uint8Array(row.pixels)
 		}
-
-		return { pixels: result, width, height }
 	}
 
 	public saveToken(token: Token) {
