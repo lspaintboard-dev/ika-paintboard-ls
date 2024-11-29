@@ -4,7 +4,6 @@ import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
 import { type TokenRequest, PaintResultCode, type WebSocketData } from './types'
 import Bun from 'bun'
-import sharp from 'sharp'
 import workerpool from 'workerpool'
 
 // 添加 logger 到全局作用域
@@ -215,7 +214,8 @@ const server = Bun.serve<WebSocketData>({
 				) => Promise<[Buffer, number]>
 			>(
 				async (pixels: SharedArrayBuffer, width: number, height: number) => {
-					const image = sharp(new Uint8Array(pixels), {
+					const sharp = await import('sharp')
+					const image = sharp.default(new Uint8Array(pixels), {
 						raw: {
 							width,
 							height,
@@ -223,7 +223,7 @@ const server = Bun.serve<WebSocketData>({
 						}
 					})
 					const webpBuffer = await image.webp({ lossless: true }).toBuffer()
-					return [await webpBuffer, width * height * 3]
+					return [webpBuffer, width * height * 3]
 				},
 				[paintboard.getSharedArrayBuffer(), config.width, config.height]
 			)
