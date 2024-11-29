@@ -74,22 +74,6 @@ const colorHash = (id: number) => {
 	return `${color}#${id}\x1b[0m`
 }
 
-async function bufferToWebP(
-	pixelData: Buffer,
-	width: number,
-	height: number
-): Promise<Buffer> {
-	const image = sharp(pixelData, {
-		raw: {
-			width,
-			height,
-			channels: 3
-		}
-	})
-	const webpBuffer = await image.webp({ lossless: true }).toBuffer()
-	return webpBuffer
-}
-
 let webSocketConnectionCount = 0
 
 // IP 连接统计
@@ -231,10 +215,15 @@ const server = Bun.serve<WebSocketData>({
 				) => Promise<[Buffer, number]>
 			>(
 				async (pixels: SharedArrayBuffer, width: number, height: number) => {
-					return [
-						await bufferToWebP(Buffer.from(pixels), width, height),
-						width * height * 3
-					]
+					const image = sharp(new Uint8Array(pixels), {
+						raw: {
+							width,
+							height,
+							channels: 3
+						}
+					})
+					const webpBuffer = await image.webp({ lossless: true }).toBuffer()
+					return [await webpBuffer, width * height * 3]
 				},
 				[paintboard.getSharedArrayBuffer(), config.width, config.height]
 			)
