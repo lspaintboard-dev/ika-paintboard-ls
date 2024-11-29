@@ -5,10 +5,12 @@ import { PaintBoardManager } from './paintboard'
 import { type TokenRequest, PaintResultCode, type WebSocketData } from './types'
 import Bun from 'bun'
 import sharp from 'sharp'
+import workerpool from 'workerpool'
 
 // 添加 logger 到全局作用域
 declare global {
 	var logger: pino.Logger
+	var pool: workerpool.Pool
 }
 const logger = pino({
 	transport: {
@@ -19,6 +21,9 @@ const logger = pino({
 	}
 })
 globalThis.logger = logger
+
+const pool = workerpool.pool()
+globalThis.pool = pool
 
 const configSchema = z.strictObject({
 	logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']),
@@ -34,7 +39,8 @@ const configSchema = z.strictObject({
 	maxWebSocketPerIP: z.number().min(0).default(0),
 	banDuration: z.number().min(0).default(60000),
 	ticksPerSecond: z.number().min(1).default(128),
-	maxPacketPerSecond: z.number().min(1).default(128)
+	maxPacketPerSecond: z.number().min(1).default(128),
+	enableTokenCounting: z.boolean().default(false)
 })
 
 let config: z.infer<typeof configSchema>
@@ -49,6 +55,22 @@ try {
 }
 
 logger.level = config.logLevel
+
+const colorHash = (id: number) => {
+	// ANSI escape codes for some colors
+	const colors = [
+		'\x1b[31m', // red
+		'\x1b[32m', // green
+		'\x1b[33m', // yellow
+		'\x1b[34m', // blue
+		'\x1b[35m', // magenta
+		'\x1b[36m', // cyan
+		'\x1b[37m' // white
+	]
+	const hash = id % colors.length
+	const color = colors[hash]
+	return `${color}#${id}\x1b[0m`
+}
 
 async function bufferToWebP(
 	pixelData: Buffer,
@@ -98,6 +120,8 @@ let globalPacketsSent = 0
 
 // 添加服务器刻追踪
 let lastTick = 0
+
+let nextConnId = 1
 
 const server = Bun.serve<WebSocketData>({
 	static: {
@@ -214,7 +238,7 @@ const server = Bun.serve<WebSocketData>({
 			}
 		})
 	},
-	idleTimeout: 120, // 你猜猜获取版面要多久
+	idleTimeout: 120,
 	websocket: {
 		idleTimeout: 60, // 60s
 		sendPings: false, // 已经有自定义 ping 机制了
@@ -222,6 +246,7 @@ const server = Bun.serve<WebSocketData>({
 		open(ws) {
 			const ip = ws.remoteAddress
 			ws.data.ip = ip
+			ws.data.connId = nextConnId++ // 分配连接ID
 			ws.data.sendBuffer = new Bun.ArrayBufferSink()
 			ws.data.sendBuffer.start({
 				asUint8Array: true,
@@ -261,7 +286,9 @@ const server = Bun.serve<WebSocketData>({
 			connections.push(ws)
 			webSocketConnectionCount++
 			logger.debug(
-				`WebSocket connected (${ip}): ${webSocketConnectionCount} clients`
+				`${colorHash(
+					ws.data.connId
+				)} ${ip} WebSocket connected: ${webSocketConnectionCount} clients online`
 			)
 			ws.subscribe('paint')
 
@@ -271,23 +298,20 @@ const server = Bun.serve<WebSocketData>({
 			ws.data.packetsReceived = 0
 			ws.data.lastPacketCountReset = Date.now()
 
-			// 为每个连接创建独立的 ping 定时器
-			ws.data.pingInterval = setInterval(() => {
-				if (ws.data.waitingPong) {
-					// 如果上一个 ping 还没收到 pong 响应，说明连接已超时
-					logger.debug(`WebSocket ping timeout for ${ip}`)
-					ws.close()
-					return
-				}
-				ws.data.waitingPong = true
-				ws.data.sendBuffer.write(new Uint8Array([0xfc])) // S2C ping
-			}, 20000)
-			ws.data.tokenUsageCount = new Set() // 初始化为空 Set
+			// 初始化第一次ping的发送
+			ws.data.nextPingDelay = Math.floor(Math.random() * 29000) + 1000 // 1-30秒
+			ws.data.pingTimer = setTimeout(() => sendPing(ws), ws.data.nextPingDelay)
+			if (config.enableTokenCounting) {
+				ws.data.tokenUsageCount = new Set() // 只在启用时初始化
+			}
 		},
 		close(ws) {
-			// 清理 ping 定时器
-			if (ws.data.pingInterval) {
-				clearInterval(ws.data.pingInterval)
+			// 清理所有定时器
+			if (ws.data.pingTimer) {
+				clearTimeout(ws.data.pingTimer)
+			}
+			if (ws.data.pongTimer) {
+				clearTimeout(ws.data.pongTimer)
 			}
 
 			ws.data.sendBuffer.flush()
@@ -303,7 +327,11 @@ const server = Bun.serve<WebSocketData>({
 				}
 			}
 			webSocketConnectionCount--
-			logger.debug(`WebSocket closed: ${webSocketConnectionCount} clients`)
+			logger.debug(
+				`${colorHash(
+					ws.data.connId
+				)} WebSocket closed: ${webSocketConnectionCount} clients remaining`
+			)
 		},
 		message(ws, msg: Buffer) {
 			if (ws.readyState !== 1) return
@@ -351,9 +379,33 @@ const server = Bun.serve<WebSocketData>({
 
 					switch (type) {
 						case 0xfb: // C2S pong
-							// 更新 pong 响应状态
+							if (!ws.data.waitingPong) {
+								// 如果服务端未发送ping就收到pong，直接关闭连接
+								logger.warn(
+									`${colorHash(ws.data.connId)} Received unexpected pong from ${
+										ws.data.ip
+									}`
+								)
+								ws.close()
+								return
+							}
+
+							// 清除pong等待定时器
+							if (ws.data.pongTimer) {
+								clearTimeout(ws.data.pongTimer)
+								ws.data.pongTimer = undefined
+							}
+
+							// 更新状态
 							ws.data.waitingPong = false
 							ws.data.lastPing = Date.now()
+
+							// 设置下一次ping
+							ws.data.nextPingDelay = Math.floor(Math.random() * 29000) + 1000 // 1-30秒
+							ws.data.pingTimer = setTimeout(
+								() => sendPing(ws),
+								ws.data.nextPingDelay
+							)
 							break
 
 						case 0xfe: {
@@ -383,8 +435,9 @@ const server = Bun.serve<WebSocketData>({
 							const id = dataView.getUint32(offset + 26, true)
 							offset += 30
 
-							// 直接加入 Set
-							ws.data.tokenUsageCount.add(token)
+							if (config.enableTokenCounting) {
+								ws.data.tokenUsageCount.add(token)
+							}
 
 							let result = paintboard.validateToken(token, uid)
 							if (result === PaintResultCode.SUCCESS) {
@@ -407,7 +460,9 @@ const server = Bun.serve<WebSocketData>({
 						}
 
 						default:
-							logger.warn(`Unknown packet type: ${type}`)
+							logger.warn(
+								`${colorHash(ws.data.connId)} Unknown packet type: ${type}`
+							)
 							ws.close()
 							return
 					}
@@ -463,30 +518,33 @@ setInterval(() => {
 	paintboard.flushUpdates()
 }, 1000 / config.ticksPerSecond)
 
-// 添加吞吐量监控
+// 吞吐量监控
 setInterval(() => {
-	// 获取所有连接的 token 统计
-	const connectionStats = Array.from(ipConnections.entries())
-		.flatMap(([ip, connections]) =>
-			connections.map(ws => ({
-				ip: ws.data.ip,
-				uniqueTokens: ws.data.tokenUsageCount.size
-			}))
-		)
-		.sort((a, b) => b.uniqueTokens - a.uniqueTokens)
+	let statsMessage = `WebSocket Traffic - Received: ${globalPacketsReceived} packets (${(
+		globalPacketsReceived / 5
+	).toFixed(2)} /s), Sent: ${globalPacketsSent} packets (${(
+		globalPacketsSent / 5
+	).toFixed(2)} /s)`
 
-	// 获取前5名
-	const top5 = connectionStats.slice(0, 5)
+	if (config.enableTokenCounting) {
+		// 获取所有连接的 token 统计
+		const connectionStats = Array.from(ipConnections.entries())
+			.flatMap(([ip, connections]) =>
+				connections.map(ws => ({
+					ip: ws.data.ip,
+					uniqueTokens: ws.data.tokenUsageCount.size
+				}))
+			)
+			.sort((a, b) => b.uniqueTokens - a.uniqueTokens)
 
-	logger.info(
-		`WebSocket Traffic - Received: ${globalPacketsReceived} packets (${(
-			globalPacketsReceived / 5
-		).toFixed(2)} /s), Sent: ${globalPacketsSent} packets (${(
-			globalPacketsSent / 5
-		).toFixed(2)} /s)\nTop 5 Token Users:\n${top5
+		// 获取前5名
+		const top5 = connectionStats.slice(0, 5)
+		statsMessage += `\nTop 5 Token Users:\n${top5
 			.map(stat => `  ${stat.ip}: ${stat.uniqueTokens} tokens`)
 			.join('\n')}`
-	)
+	}
+
+	logger.info(statsMessage)
 
 	// 重置计数器
 	globalPacketsReceived = 0
@@ -585,3 +643,25 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 }
 
 logger.info(`Server started on port ${config.port}`)
+
+// 添加发送ping的辅助函数
+function sendPing(ws: Bun.ServerWebSocket<WebSocketData>) {
+	if (ws.data.waitingPong) {
+		// 不应该发生，以防万一
+		ws.close()
+		return
+	}
+
+	ws.data.waitingPong = true
+	ws.data.sendBuffer.write(new Uint8Array([0xfc])) // S2C ping
+
+	// 设置3秒后检查pong响应
+	ws.data.pongTimer = setTimeout(() => {
+		if (ws.data.waitingPong) {
+			logger.debug(
+				`${colorHash(ws.data.connId)} WebSocket ping timeout for ${ws.data.ip}`
+			)
+			ws.close()
+		}
+	}, 3000)
+}
