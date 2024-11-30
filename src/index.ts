@@ -243,7 +243,7 @@ const server = Bun.serve<WebSocketData>({
 		}
 
 		if (url.pathname === '/api/auth/gettoken' && req.method === 'POST') {
-			return handleTokenRequest(req)
+			return await handleTokenRequest(req)
 		}
 
 		return new Response('Not Found', {
