@@ -270,7 +270,7 @@ const server = Bun.serve<WebSocketData>({
 
 			// 检查是否被封禁
 			if (isBanned(ip)) {
-				ws.close()
+				ws.close(1008, 'IP is banned')
 				return
 			}
 
@@ -290,11 +290,11 @@ const server = Bun.serve<WebSocketData>({
 				banIP(ip)
 				// 断开该 IP 的所有连接
 				for (const conn of connections) {
-					conn.close()
+					conn.close(1008, 'IP connection limit exceeded')
 				}
 				ipConnections.delete(ip)
 				logger.warn(`IP ${ip} exceeded WebSocket limit and got banned`)
-				ws.close()
+				ws.close(1008, 'IP connection limit exceeded')
 				return
 			}
 
@@ -372,7 +372,7 @@ const server = Bun.serve<WebSocketData>({
 				const connections = ipConnections.get(ip)
 				if (connections) {
 					for (const conn of connections) {
-						conn.close()
+						conn.close(1013, 'Packet rate limit exceeded')
 					}
 					ipConnections.delete(ip)
 				}
@@ -401,11 +401,11 @@ const server = Bun.serve<WebSocketData>({
 										ws.data.ip
 									}`
 								)
-								ws.close()
+								ws.close(1002, 'Protocol violation: unexpected pong')
 								return
 							}
 
-							// 清除pong等待定时器
+							// 清除pong等待定时
 							if (ws.data.pongTimer) {
 								clearTimeout(ws.data.pongTimer)
 								ws.data.pongTimer = undefined
@@ -478,13 +478,13 @@ const server = Bun.serve<WebSocketData>({
 							logger.warn(
 								`${colorHash(ws.data.connId)} Unknown packet type: ${type}`
 							)
-							ws.close()
+							ws.close(1002, 'Protocol violation: unknown packet type')
 							return
 					}
 				}
 			} catch (e) {
 				logger.error(e, 'Error processing message, terminating connection')
-				ws.close()
+				ws.close(1011, 'Server error processing message')
 			}
 		}
 	},
@@ -663,7 +663,7 @@ logger.info(`Server started on port ${config.port}`)
 function sendPing(ws: Bun.ServerWebSocket<WebSocketData>) {
 	if (ws.data.waitingPong) {
 		// 不应该发生，以防万一
-		ws.close()
+		ws.close(1002, 'Protocol violation: duplicate ping state')
 		return
 	}
 
@@ -676,7 +676,7 @@ function sendPing(ws: Bun.ServerWebSocket<WebSocketData>) {
 			logger.debug(
 				`${colorHash(ws.data.connId)} WebSocket ping timeout for ${ws.data.ip}`
 			)
-			ws.close()
+			ws.close(1001, 'Ping timeout')
 		}
 	}, 3000)
 }
