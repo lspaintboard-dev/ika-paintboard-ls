@@ -41,7 +41,8 @@ const configSchema = z.strictObject({
 	banDuration: z.number().min(0).default(60000),
 	ticksPerSecond: z.number().min(1).default(128),
 	maxPacketPerSecond: z.number().min(1).default(128),
-	enableTokenCounting: z.boolean().default(false)
+	enableTokenCounting: z.boolean().default(false),
+	maxAllowedUID: z.number().optional()
 })
 
 let config: z.infer<typeof configSchema>
@@ -579,6 +580,27 @@ process.on('SIGTERM', handleShutdown)
 async function handleTokenRequest(req: Request): Promise<Response> {
 	try {
 		const body = (await req.json()) as TokenRequest
+
+		// 添加 UID 范围检查
+		if (config.maxAllowedUID && body.uid > config.maxAllowedUID) {
+			return new Response(
+				JSON.stringify({
+					statusCode: 403,
+					data: {
+						errorType: 'UID_NOT_ALLOWED',
+						message: `UID must be less than or equal to ${config.maxAllowedUID}`
+					}
+				}),
+				{
+					status: 403,
+					headers: {
+						'Content-Type': 'application/json',
+						'Access-Control-Allow-Origin': '*'
+					}
+				}
+			)
+		}
+
 		const result = await paintboard.generateToken(body.uid, body.paste)
 
 		if (!result.token) {
