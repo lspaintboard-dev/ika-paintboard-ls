@@ -215,7 +215,7 @@ export class PaintBoardManager {
 			return PaintResultCode.COOLING
 
 		const result = PaintResultCode.SUCCESS
-		this.lastPaintTime.set(token, now)
+		this.lastPaintTime.set(tokenInfo.uid, now)
 		return result
 	}
 
