@@ -209,7 +209,7 @@ export class PaintBoardManager {
 
 		if (!tokenInfo) return PaintResultCode.INVALID_TOKEN
 
-		const lastPrint = this.lastPaintTime.get(token)
+		const lastPrint = this.lastPaintTime.get(tokenInfo.uid)
 
 		if (lastPrint && now - lastPrint < this.paintDelay)
 			return PaintResultCode.COOLING
