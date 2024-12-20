@@ -16,7 +16,7 @@ export class PaintBoardManager {
 	private validationPaste: string
 	private db?: DBManager
 	private autoSaveInterval?: Timer
-	private lastPaintTime: Map<string, number> = new Map()
+	private lastPaintTime: Map<number, number> = new Map()
 	private colorUpdateListener?: ColorUpdateListener
 	private dirtyFlags: boolean[] = []
 	private dirtyList: number[] = []
