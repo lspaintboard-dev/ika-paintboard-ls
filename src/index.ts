@@ -253,7 +253,7 @@ const server = Bun.serve<WebSocketData>({
 		
 		if (url.pathname === '/api/root/banuid' && req.method === 'POST') {
 			const body = (await req.json()) as banUidData
-			if (body.token !== config.botToken) {
+			if (body.token !== config.banToken) {
 				return new Response('Unauthorized', {
 					status: 401,
 					headers: {
@@ -271,7 +271,7 @@ const server = Bun.serve<WebSocketData>({
 		}
 		if (url.pathname === '/api/root/unbanuid' && req.method === 'POST') {
 			const body = (await req.json()) as banUidData
-			if (body.token !== config.botToken) {
+			if (body.token !== config.banToken) {
 				return new Response('Unauthorized', {
 					status: 401,
 					headers: {
