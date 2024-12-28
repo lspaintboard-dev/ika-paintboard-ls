@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { parse as parseYaml } from 'yaml'
 import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
-import { type TokenRequest, PaintResultCode, type WebSocketData } from './types'
+import { type TokenRequest, PaintResultCode, type WebSocketData, type banUidData } from './types'
 import Bun from 'bun'
 import workerpool from 'workerpool'
 
@@ -42,7 +42,8 @@ const configSchema = z.strictObject({
 	ticksPerSecond: z.number().min(1).default(128),
 	maxPacketPerSecond: z.number().min(1).default(128),
 	enableTokenCounting: z.boolean().default(false),
-	maxAllowedUID: z.number().optional()
+	maxAllowedUID: z.number().optional(),
+	botToken: z.string().optional(),
 })
 
 let config: z.infer<typeof configSchema>
@@ -81,6 +82,9 @@ const ipConnections = new Map<string, Bun.ServerWebSocket<WebSocketData>[]>()
 
 // IP 封禁记录
 const bannedIPs = new Map<string, number>()
+
+// UID 封禁记录
+const bannedUIDs = new Set<number>()
 
 // 检查 IP 是否被封禁
 function isBanned(ip: string): boolean {
@@ -245,6 +249,43 @@ const server = Bun.serve<WebSocketData>({
 
 		if (url.pathname === '/api/auth/gettoken' && req.method === 'POST') {
 			return await handleTokenRequest(req)
+		}
+		
+		if (url.pathname === '/api/root/banuid' && req.method === 'POST') {
+			const body = (await req.json()) as banUidData
+			if (body.token !== config.botToken) {
+				return new Response('Unauthorized', {
+					status: 401,
+					headers: {
+						'Access-Control-Allow-Origin': '*'
+					}
+				})
+			}
+			bannedUIDs.add(body.uid)
+			return new Response('OK', {
+				status: 200,
+				headers: {
+					'Access-Control-Allow-Origin': '*'
+				}
+			})
+		}
+		if (url.pathname === '/api/root/unbanuid' && req.method === 'POST') {
+			const body = (await req.json()) as banUidData
+			if (body.token !== config.botToken) {
+				return new Response('Unauthorized', {
+					status: 401,
+					headers: {
+						'Access-Control-Allow-Origin': '*'
+					}
+				})
+			}
+			bannedUIDs.delete(body.uid)
+			return new Response('OK', {
+				status: 200,
+				headers: {
+					'Access-Control-Allow-Origin': '*'
+				}
+			})
 		}
 
 		return new Response('Not Found', {
@@ -454,12 +495,19 @@ const server = Bun.serve<WebSocketData>({
 							if (config.enableTokenCounting) {
 								ws.data.tokenUsageCount.add(token)
 							}
-
-							let result = paintboard.validateToken(token, uid)
-							if (result === PaintResultCode.SUCCESS) {
-								const success = paintboard.setPixel(x, y, color)
-								if (!success) {
-									result = PaintResultCode.BAD_FORMAT
+							let result = 0x00
+							if (bannedUIDs.has(uid))
+							{
+								result = PaintResultCode.NO_PERMISSION
+							}
+							else
+							{
+								result = paintboard.validateToken(token, uid)
+								if (result === PaintResultCode.SUCCESS) {
+									const success = paintboard.setPixel(x, y, color)
+									if (!success) {
+										result = PaintResultCode.BAD_FORMAT
+									}
 								}
 							}
 
