@@ -43,7 +43,7 @@ const configSchema = z.strictObject({
 	maxPacketPerSecond: z.number().min(1).default(128),
 	enableTokenCounting: z.boolean().default(false),
 	maxAllowedUID: z.number().optional(),
-	botToken: z.string().optional(),
+	banToken: z.string().optional(),
 })
 
 let config: z.infer<typeof configSchema>
