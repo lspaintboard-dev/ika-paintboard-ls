@@ -16,7 +16,7 @@ export class PaintBoardManager {
 	private validationPaste: string
 	private db?: DBManager
 	private autoSaveInterval?: Timer
-	private lastPaintTime: Map<string, number> = new Map()
+	private lastPaintTime: Map<number, number> = new Map()
 	private colorUpdateListener?: ColorUpdateListener
 	private dirtyFlags: boolean[] = []
 	private dirtyList: number[] = []
@@ -217,7 +217,7 @@ export class PaintBoardManager {
 			return PaintResultCode.COOLING
 
 		const result = PaintResultCode.SUCCESS
-		this.lastPaintTime.set(token, now)
+		this.lastPaintTime.set(tokenInfo.uid, now)
 		return result
 	}
 
