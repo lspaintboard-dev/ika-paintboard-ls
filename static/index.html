@@ -379,7 +379,7 @@
             type: 'POST',
             url: '/api/auth/gettoken',
             data: JSON.stringify({
-                uid: document.getElementById('uid').value.toString(),
+                uid: parseInt(document.getElementById('uid').value),
                 paste: document.getElementById('paste').value
             }),
             complete: (resp) => {
