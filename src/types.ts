@@ -31,9 +31,9 @@ export type TokenRequest = {
 	paste: string
 }
 
-export type banUidData = {
-    token: string
-    uid: number
+export type BanUidData = {
+	token: string
+	uid: number
 	time: number
 }
 
