@@ -31,6 +31,12 @@ export type TokenRequest = {
 	paste: string
 }
 
+export type BanUidData = {
+	token: string
+	uid: number
+	time: number
+}
+
 export type WebSocketData = {
 	connId: number
 	connectedAt: number
