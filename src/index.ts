@@ -647,7 +647,6 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 	try {
 		const body = (await req.json()) as TokenRequest
 
-
 		if (!body.uid.isInteger()) {
 			return new Response(
 				JSON.stringify({
@@ -667,7 +666,6 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 			)
 		}
 		
-
 		// 添加 UID 范围检查
 		if (config.maxAllowedUID && body.uid > config.maxAllowedUID) {
 			return new Response(
