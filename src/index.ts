@@ -281,7 +281,7 @@ const server = Bun.serve<WebSocketData>({
 		if (url.pathname === '/api/root/pardonuid' && req.method === 'POST') {
 			try {
 				const body = (await req.json()) as BanUidData
-				if (body.token !== config.banToken) {
+				if (body.token !== config.rootToken) {
 					return new Response('Forbidden', {
 						status: 403,
 						headers: {
