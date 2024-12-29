@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { parse as parseYaml } from 'yaml'
 import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
-import { type TokenRequest, PaintResultCode, type WebSocketData, type banUidData } from './types'
+import { type TokenRequest, PaintResultCode, type WebSocketData, type BanUidData } from './types'
 import Bun from 'bun'
 import workerpool from 'workerpool'
 
@@ -43,7 +43,7 @@ const configSchema = z.strictObject({
 	maxPacketPerSecond: z.number().min(1).default(128),
 	enableTokenCounting: z.boolean().default(false),
 	maxAllowedUID: z.number().optional(),
-	banToken: z.string().optional(),
+	rootToken: z.string().optional(),
 })
 
 let config: z.infer<typeof configSchema>
@@ -252,40 +252,58 @@ const server = Bun.serve<WebSocketData>({
 		}
 		
 		if (url.pathname === '/api/root/banuid' && req.method === 'POST') {
-			const body = (await req.json()) as banUidData
-			if (body.token !== config.banToken) {
-				return new Response('Unauthorized', {
-					status: 401,
+			try {
+				const body = (await req.json()) as BanUidData
+				if (body.token !== config.rootToken) {
+					return new Response('Forbidden', {
+						status: 403,
+						headers: {
+							'Access-Control-Allow-Origin': '*'
+						}
+					})
+				}
+				bannedUIDs.add(body.uid)
+				return new Response('OK', {
+					status: 200,
+					headers: {
+						'Access-Control-Allow-Origin': '*'
+					}
+				})
+			} catch (err) { // req.json might be invalid
+				return new Response('Bad Request', {
+					status: 400,
 					headers: {
 						'Access-Control-Allow-Origin': '*'
 					}
 				})
 			}
-			bannedUIDs.add(body.uid)
-			return new Response('OK', {
-				status: 200,
-				headers: {
-					'Access-Control-Allow-Origin': '*'
-				}
-			})
 		}
-		if (url.pathname === '/api/root/unbanuid' && req.method === 'POST') {
-			const body = (await req.json()) as banUidData
-			if (body.token !== config.banToken) {
-				return new Response('Unauthorized', {
-					status: 401,
+		if (url.pathname === '/api/root/pardonuid' && req.method === 'POST') {
+			try {
+				const body = (await req.json()) as BanUidData
+				if (body.token !== config.banToken) {
+					return new Response('Forbidden', {
+						status: 403,
+						headers: {
+							'Access-Control-Allow-Origin': '*'
+						}
+					})
+				}
+				bannedUIDs.delete(body.uid)
+				return new Response('OK', {
+					status: 200,
+					headers: {
+						'Access-Control-Allow-Origin': '*'
+					}
+				})
+			} catch (err) { // req.json might be invalid
+				return new Response('Bad Request', {
+					status: 400,
 					headers: {
 						'Access-Control-Allow-Origin': '*'
 					}
 				})
 			}
-			bannedUIDs.delete(body.uid)
-			return new Response('OK', {
-				status: 200,
-				headers: {
-					'Access-Control-Allow-Origin': '*'
-				}
-			})
 		}
 
 		return new Response('Not Found', {
