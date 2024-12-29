@@ -647,8 +647,9 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 	try {
 		const body = (await req.json()) as TokenRequest
 
+		const uid = parseInt(body.uid.toString())
 		// 添加 UID 范围检查
-		if (config.maxAllowedUID && body.uid > config.maxAllowedUID) {
+		if (config.maxAllowedUID && uid > config.maxAllowedUID) {
 			return new Response(
 				JSON.stringify({
 					statusCode: 403,
@@ -667,7 +668,7 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 			)
 		}
 
-		const result = await paintboard.generateToken(body.uid, body.paste)
+		const result = await paintboard.generateToken(uid, body.paste)
 
 		if (!result.token) {
 			if (
