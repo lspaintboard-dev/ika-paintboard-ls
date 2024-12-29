@@ -647,7 +647,27 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 	try {
 		const body = (await req.json()) as TokenRequest
 
-		const uid = parseInt(body.uid.toString())
+
+		if (!body.uid.isInteger()) {
+			return new Response(
+				JSON.stringify({
+					statusCode: 400,
+					data: {
+						errorType: 'BAD_REQUEST',
+						message: 'Invalid request format'
+					}
+				}),
+				{
+					status: 400,
+					headers: {
+						'Content-Type': 'application/json',
+						'Access-Control-Allow-Origin': '*'
+					}
+				}
+			)
+		}
+		
+
 		// 添加 UID 范围检查
 		if (config.maxAllowedUID && uid > config.maxAllowedUID) {
 			return new Response(
