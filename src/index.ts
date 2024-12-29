@@ -647,7 +647,7 @@ async function handleTokenRequest(req: Request): Promise<Response> {
 	try {
 		const body = (await req.json()) as TokenRequest
 
-		if (!body.uid.isInteger()) {
+		if (!Number.isInteger(body.uid)) {
 			return new Response(
 				JSON.stringify({
 					statusCode: 400,
