@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { parse as parseYaml } from 'yaml'
 import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
-import { type TokenRequest, PaintResultCode, type WebSocketData, type banUidData } from './types'
+import { type TokenRequest, PaintResultCode, type WebSocketData, type BanUidData } from './types'
 import Bun from 'bun'
 import workerpool from 'workerpool'
 
