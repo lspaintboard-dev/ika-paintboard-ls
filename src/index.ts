@@ -265,6 +265,7 @@ const server = Bun.serve<WebSocketData>({
 					})
 				}
 				bannedUIDs.add(body.uid)
+				logger.info(`Banned UID ${body.uid}`)
 				return new Response('OK', {
 					status: 200,
 					headers: {
@@ -292,6 +293,7 @@ const server = Bun.serve<WebSocketData>({
 					})
 				}
 				bannedUIDs.delete(body.uid)
+				logger.info(`Pardoned UID ${body.uid}`)
 				return new Response('OK', {
 					status: 200,
 					headers: {
