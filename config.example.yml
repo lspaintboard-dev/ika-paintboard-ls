@@ -8,3 +8,5 @@ ticksPerSecond: 128 # 每秒刷新次数
 # maxWebSocketPerIP: 7 # 每个 IP 最大 WebSocket 连接数
 # key: ./key.pem # SSL证书
 # cert: ./cert.pem # SSL证书
+# activityStartTime: 0 # 毫秒为单位，活动开始时间
+# activityEndTime: 1767196800000 # 活动结束时间

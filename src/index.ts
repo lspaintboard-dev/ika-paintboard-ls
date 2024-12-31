@@ -44,6 +44,8 @@ const configSchema = z.strictObject({
 	enableTokenCounting: z.boolean().default(false),
 	maxAllowedUID: z.number().optional(),
 	rootToken: z.string().optional(),
+	activityStartTime: z.number().default(0),
+	activityEndTime: z.number().default(1767196800000)
 })
 
 let config: z.infer<typeof configSchema>
@@ -115,7 +117,7 @@ let nextConnId = 1
 
 const server = Bun.serve<WebSocketData>({
 	static: {
-		'/api': new Response('IkaPaintBoard Made by Ikaleio :)', {
+		'/api': new Response(':(', {
 			headers: {
 				'Access-Control-Allow-Origin': '*'
 			}
@@ -485,6 +487,7 @@ const server = Bun.serve<WebSocketData>({
 
 						case 0xfe: {
 							// C2S paint (31字节)
+							
 							const x = dataView.getUint16(offset, true) // 添加 true 表示小端序
 							const y = dataView.getUint16(offset + 2, true)
 							const color = {
@@ -520,6 +523,13 @@ const server = Bun.serve<WebSocketData>({
 							}
 							else
 							{
+								// 检查是否在活动时间内
+								if(Date.now() > config.activityEndTime || Date.now() < config.activityStartTime) {
+									logger.info('Painting before activity started or after ended, terminating connection')
+									ws.close(1003, 'Activity not started or already ended')
+									return
+								}
+
 								result = paintboard.validateToken(token, uid)
 								if (result === PaintResultCode.SUCCESS) {
 									const success = paintboard.setPixel(x, y, color)
