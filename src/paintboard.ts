@@ -114,7 +114,8 @@ export class PaintBoardManager {
 		this.pixelView[idx + 1] = color.g
 		this.pixelView[idx + 2] = color.b
 		if (this.allowQuery) {
-			this.vis[idx] = { uid, timestamp: Date.now() }
+			const idx_vis = (y * this.board.width + x)
+			this.vis[idx_vis] = { uid, timestamp: Date.now() }
 		}
 
 
@@ -267,7 +268,7 @@ export class PaintBoardManager {
 
 	public getVis(x: number, y: number): PixelData {
 		if (this.allowQuery) {
-			const idx = (y * this.board.width + x) * 3
+			const idx = (y * this.board.width + x)
 			return this.vis[idx]
 		}
 		return { uid: 0x39c5bb, timestamp: 0x39c5bb }
