@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { parse as parseYaml } from 'yaml'
 import pino from 'pino'
 import { PaintBoardManager } from './paintboard'
-import { type TokenRequest, PaintResultCode, type WebSocketData, type BanUidData } from './types'
+import { type TokenRequest, PaintResultCode, type WebSocketData, type BanUidData, type QueryVisData } from './types'
 import Bun from 'bun'
 import workerpool from 'workerpool'
 
@@ -44,6 +44,7 @@ const configSchema = z.strictObject({
 	enableTokenCounting: z.boolean().default(false),
 	maxAllowedUID: z.number().optional(),
 	rootToken: z.string().optional(),
+	allowQuery: z.boolean().default(false),
 })
 
 let config: z.infer<typeof configSchema>
@@ -308,6 +309,40 @@ const server = Bun.serve<WebSocketData>({
 			}
 		}
 
+		if (url.pathname === '/api/root/queryvis' && req.method === 'POST') {
+			try {
+				const body = (await req.json()) as QueryVisData
+				if (body.token !== config.rootToken) {
+					return new Response('Forbidden', {
+						status: 403,
+						headers: {
+							'Access-Control-Allow-Origin': '*'
+						}
+					})
+				}
+				const vis = paintboard.getVis(body.x, body.y)
+				return new Response(JSON.stringify({
+					statusCode: 200,
+					data: {
+						uid: vis.uid,
+						timestamp: vis.timestamp
+					}
+				}), {
+					status: 200,
+					headers: {
+						'Access-Control-Allow-Origin': '*'
+					}
+				})
+			} catch (err) { // req.json might be invalid
+				return new Response('Bad Request', {
+					status: 400,
+					headers: {
+						'Access-Control-Allow-Origin': '*'
+					}
+				})
+			}
+		}
+
 		return new Response('Not Found', {
 			status: 404,
 			headers: {
@@ -524,7 +559,7 @@ const server = Bun.serve<WebSocketData>({
 							{
 								result = paintboard.validateToken(token, uid)
 								if (result === PaintResultCode.SUCCESS) {
-									const success = paintboard.setPixel(x, y, color)
+									const success = paintboard.setPixel(x, y, color, uid)
 									if (!success) {
 										result = PaintResultCode.BAD_FORMAT
 									}
@@ -575,7 +610,8 @@ const paintboard = new PaintBoardManager(
 	config.paintDelay,
 	config.validationPaste,
 	config.useDB,
-	config.clearBoard
+	config.clearBoard,
+	config.allowQuery
 )
 
 // 颜色更新事件处理
