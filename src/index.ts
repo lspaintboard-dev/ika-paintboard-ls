@@ -44,6 +44,8 @@ const configSchema = z.strictObject({
 	enableTokenCounting: z.boolean().default(false),
 	maxAllowedUID: z.number().optional(),
 	rootToken: z.string().optional(),
+	activityStartTime: z.number().default(0),
+	activityEndTime: z.number().default(1767196800000),
 	allowQuery: z.boolean().default(false),
 })
 
