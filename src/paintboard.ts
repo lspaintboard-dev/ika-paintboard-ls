@@ -3,7 +3,8 @@ import {
 	type Color,
 	type Token,
 	PaintResultCode,
-	type ColorUpdateListener
+	type ColorUpdateListener,
+	type PixelData
 } from './types'
 import { randomUUID } from 'crypto'
 import { DBManager } from './database'
@@ -20,6 +21,9 @@ export class PaintBoardManager {
 	private colorUpdateListener?: ColorUpdateListener
 	private dirtyFlags: boolean[] = []
 	private dirtyList: number[] = []
+	// vis[][] 为 PixelData[][] 初始值为空
+	private vis: PixelData[] = []
+	private allowQuery: boolean = false
 
 	constructor(
 		width: number,
@@ -27,7 +31,8 @@ export class PaintBoardManager {
 		paintDelay: number,
 		validationPaste: string,
 		useDB: boolean,
-		clearBoard: boolean
+		clearBoard: boolean,
+		allowQuery: boolean,
 	) {
 		// 初始化 SharedArrayBuffer
 		const bufferSize = width * height * 3 // 每个像素 3 字节(RGB)
@@ -68,7 +73,10 @@ export class PaintBoardManager {
 		} else {
 			this.initializeBoard()
 		}
-
+		this.allowQuery = allowQuery
+		if (allowQuery) {
+			this.vis = new Array(width * height).fill({ uid: 0, timestamp: 0 })
+		}
 		this.paintDelay = paintDelay
 		this.validationPaste = validationPaste
 		this.dirtyFlags = new Array(width * height).fill(false)
@@ -96,7 +104,7 @@ export class PaintBoardManager {
 		this.colorUpdateListener = listener
 	}
 
-	public setPixel(x: number, y: number, color: Color): boolean {
+	public setPixel(x: number, y: number, color: Color, uid: number): boolean {
 		if (x < 0 || x >= this.board.width || y < 0 || y >= this.board.height) {
 			return false
 		}
@@ -105,6 +113,10 @@ export class PaintBoardManager {
 		this.pixelView[idx] = color.r
 		this.pixelView[idx + 1] = color.g
 		this.pixelView[idx + 2] = color.b
+		if (this.allowQuery) {
+			this.vis[idx] = { uid, timestamp: Date.now() }
+		}
+
 
 		// 将坐标转换为唯一标识
 		const pixelId = y * this.board.width + x
@@ -251,5 +263,13 @@ export class PaintBoardManager {
 			logger.error(e, 'Failed to parse paste response')
 			return { success: false }
 		}
+	}
+
+	public getVis(x: number, y: number): PixelData {
+		if (this.allowQuery) {
+			const idx = (y * this.board.width + x) * 3
+			return this.vis[idx]
+		}
+		return { uid: 0x39c5bb, timestamp: 0x39c5bb }
 	}
 }

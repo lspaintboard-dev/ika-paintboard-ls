@@ -17,6 +17,11 @@ export type Token = {
 	token: string
 }
 
+export type PixelData = {
+	uid: number
+	timestamp: number
+}
+
 export enum PaintResultCode {
 	SUCCESS = 0xef,
 	INVALID_TOKEN = 0xed,
@@ -35,6 +40,12 @@ export type BanUidData = {
 	token: string
 	uid: number
 	time: number
+}
+
+export type QueryVisData = {
+    token: string
+	x: number
+	y: number
 }
 
 export type WebSocketData = {
