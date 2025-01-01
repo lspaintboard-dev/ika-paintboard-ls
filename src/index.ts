@@ -45,7 +45,8 @@ const configSchema = z.strictObject({
 	maxAllowedUID: z.number().optional(),
 	rootToken: z.string().optional(),
 	activityStartTime: z.number().default(0),
-	activityEndTime: z.number().default(1767196800000)
+	activityEndTime: z.number().default(1767196800000),
+	allowQuery: z.boolean().default(false),
 })
 
 let config: z.infer<typeof configSchema>
